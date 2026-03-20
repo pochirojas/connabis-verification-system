@@ -128,7 +128,7 @@ async function getVerificationUrl(token, apiKey, uuid) {
       'Authorization': `Bearer ${token}`,
       'x-api-key': apiKey
     },
-    body: JSON.stringify({ uuid })
+    body: JSON.stringify({ identifier: uuid })
   });
 
   if (!res.ok) {
@@ -164,7 +164,7 @@ export async function checkVerificationStatus(uuid) {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${token}`
     },
-    body: JSON.stringify({ uuid })
+    body: JSON.stringify({ identifier: uuid })
   });
 
   if (!res.ok) {
@@ -191,7 +191,7 @@ export async function getVerificationResults(uuid) {
       'Authorization': `Bearer ${token}`
     },
     body: JSON.stringify({
-      uuid,
+      identifier: uuid,
       includeImages: false,
       includeVideo: false,
       includeProofAdress: false
