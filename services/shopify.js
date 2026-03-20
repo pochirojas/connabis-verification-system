@@ -1,7 +1,13 @@
 // services/shopify.js — Shopify Admin API Client
-// Handles: adding "Verified" tag + setting sequential verified number metafield
-// Sequential numbering: queries Shopify GraphQL for the highest existing
-// custom.verified_number and increments by 1. No database needed.
+// Handles: OAuth token management, adding "Verified" tag, sequential verified number
+//
+// IMPORTANT (2026): Shopify deprecated static shpat_ tokens in January 2026.
+// Apps created in the Dev Dashboard now use the client credentials grant:
+//   POST https://{shop}.myshopify.com/admin/oauth/access_token
+//   grant_type=client_credentials&client_id=...&client_secret=...
+// Tokens expire every 24 hours and are refreshed automatically.
+
+import { URLSearchParams } from 'node:url';
 import fetch from 'node-fetch';
 
 // ─── Configuration ───────────────────────────────────────────────
@@ -11,26 +17,69 @@ const METAFIELD_KEY = 'verified_number';
 // If no verified customers exist yet, the first number assigned will be this:
 const STARTING_NUMBER = 300;
 
-// ─── Helpers ─────────────────────────────────────────────────────
+// ─── Token Management ────────────────────────────────────────────
+// In-memory cache for the short-lived access token
+let cachedToken = null;
+let tokenExpiresAt = 0;
+
+async function getAccessToken() {
+  // Return cached token if still valid (with 60s buffer)
+  if (cachedToken && Date.now() < tokenExpiresAt - 60_000) {
+    return cachedToken;
+  }
+
+  const shop = process.env.SHOPIFY_STORE_URL; // connabis.myshopify.com
+  const clientId = process.env.SHOPIFY_CLIENT_ID;
+  const clientSecret = process.env.SHOPIFY_CLIENT_SECRET;
+
+  if (!shop || !clientId || !clientSecret) {
+    throw new Error(
+      'Missing Shopify credentials. Set SHOPIFY_STORE_URL, SHOPIFY_CLIENT_ID, and SHOPIFY_CLIENT_SECRET.'
+    );
+  }
+
+  console.log('[Shopify Auth] Requesting new access token via client credentials grant...');
+
+  const res = await fetch(`https://${shop}/admin/oauth/access_token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'client_credentials',
+      client_id: clientId,
+      client_secret: clientSecret,
+    }),
+  });
+
+  if (!res.ok) {
+    const error = await res.text();
+    throw new Error(`Shopify token request failed (${res.status}): ${error}`);
+  }
+
+  const data = await res.json();
+  // Response: { access_token, scope, expires_in: 86399 }
+  cachedToken = data.access_token;
+  tokenExpiresAt = Date.now() + data.expires_in * 1000;
+
+  console.log('[Shopify Auth] Token obtained, expires in', data.expires_in, 'seconds');
+  console.log('[Shopify Auth] Scopes:', data.scope);
+  return cachedToken;
+}
+
+// ─── API Helpers ─────────────────────────────────────────────────
 
 // Make authenticated REST request to Shopify Admin API
 async function shopifyAdminFetch(endpoint, options = {}) {
-  const storeUrl = process.env.SHOPIFY_STORE_URL;
-  const token = process.env.SHOPIFY_API_KEY;
+  const shop = process.env.SHOPIFY_STORE_URL;
+  const token = await getAccessToken();
 
-  if (!storeUrl || !token) {
-    console.warn('[Shopify] Store URL or access token not configured, skipping');
-    return null;
-  }
-
-  const url = `https://${storeUrl}/admin/api/2024-01${endpoint}`;
+  const url = `https://${shop}/admin/api/2024-01${endpoint}`;
   const res = await fetch(url, {
     ...options,
     headers: {
       'X-Shopify-Access-Token': token,
       'Content-Type': 'application/json',
-      ...options.headers
-    }
+      ...options.headers,
+    },
   });
 
   if (!res.ok) {
@@ -42,22 +91,17 @@ async function shopifyAdminFetch(endpoint, options = {}) {
 
 // Make authenticated GraphQL request to Shopify Admin API
 async function shopifyGraphQL(query, variables = {}) {
-  const storeUrl = process.env.SHOPIFY_STORE_URL;
-  const token = process.env.SHOPIFY_API_KEY;
+  const shop = process.env.SHOPIFY_STORE_URL;
+  const token = await getAccessToken();
 
-  if (!storeUrl || !token) {
-    console.warn('[Shopify] Store URL or access token not configured, skipping');
-    return null;
-  }
-
-  const url = `https://${storeUrl}/admin/api/2024-01/graphql.json`;
+  const url = `https://${shop}/admin/api/2024-01/graphql.json`;
   const res = await fetch(url, {
     method: 'POST',
     headers: {
       'X-Shopify-Access-Token': token,
-      'Content-Type': 'application/json'
+      'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ query, variables })
+    body: JSON.stringify({ query, variables }),
   });
 
   if (!res.ok) {
@@ -80,9 +124,6 @@ async function shopifyGraphQL(query, variables = {}) {
 async function getNextVerifiedNumber() {
   console.log('[Shopify] Querying highest verified_number via GraphQL...');
 
-  // Search for customers with the "Verified" tag and their metafield value.
-  // We sort by updated_at DESC and paginate to scan through all verified customers.
-  // In practice this should be a small set (hundreds, not millions).
   let maxNumber = STARTING_NUMBER - 1; // so first assigned = STARTING_NUMBER
   let hasNextPage = true;
   let cursor = null;
@@ -150,8 +191,8 @@ export async function addVerifiedTag(customerId) {
   const data = await shopifyAdminFetch(`/customers/${customerId}.json`, {
     method: 'PUT',
     body: JSON.stringify({
-      customer: { id: customerId, tags: newTags }
-    })
+      customer: { id: customerId, tags: newTags },
+    }),
   });
 
   console.log('[Shopify] Verified tag added successfully');
@@ -169,9 +210,9 @@ export async function setVerifiedNumber(customerId, verifiedNumber) {
         namespace: METAFIELD_NAMESPACE,
         key: METAFIELD_KEY,
         value: String(verifiedNumber),
-        type: 'number_integer'
-      }
-    })
+        type: 'number_integer',
+      },
+    }),
   });
 
   console.log('[Shopify] Verified number metafield set successfully');
