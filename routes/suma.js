@@ -1,7 +1,7 @@
 // routes/suma.js — SUMA Callbacks & Webhook Handlers
 import express from 'express';
 import { sendVerificationResultEmail } from '../services/email.js';
-import { updateShopifyCustomerVerification } from '../services/shopify.js';
+import { markCustomerVerified } from '../services/shopify.js';
 
 const router = express.Router();
 
@@ -158,21 +158,17 @@ router.post('/webhook', express.json(), async (req, res) => {
     });
     console.log('[SUMA Webhook] Admin notification email sent');
 
-    // Step 2: Update Shopify customer metafield with verification status
-    if (customerId) {
+    // Step 2: If verified, add "verified" tag + assign verified number on Shopify
+    if (customerId && isVerified) {
       try {
-        await updateShopifyCustomerVerification(customerId, {
-          verified: isVerified,
-          verification_id,
-          verified_at: new Date().toISOString(),
-          document_type: document_type || null,
-          age: age || null
-        });
-        console.log('[SUMA Webhook] Shopify customer metafield updated');
+        const result = await markCustomerVerified(customerId);
+        console.log('[SUMA Webhook] Customer marked as verified:', result.verifiedNumber);
       } catch (shopifyError) {
         // Don't fail the webhook if Shopify update fails
-        console.error('[SUMA Webhook] Shopify metafield update failed (non-critical):', shopifyError.message);
+        console.error('[SUMA Webhook] Shopify update failed (non-critical):', shopifyError.message);
       }
+    } else if (customerId && !isVerified) {
+      console.log('[SUMA Webhook] Customer', customerId, 'failed verification — no tag/number assigned');
     }
 
     res.status(200).json({ received: true });
