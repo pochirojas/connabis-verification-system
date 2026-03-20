@@ -7,7 +7,7 @@ When a customer creates an account on the Shopify store, this system:
 2. Creates a SUMA Mexico VeriDocID verification session
 3. Sends the customer a verification email (via Resend)
 4. Receives the verification result from SUMA via webhook
-5. Notifies the admin and updates the Shopify customer metafield
+5. Adds the **"Verified"** tag and assigns a sequential **verified number** (custom.verified_number) to the customer
 
 ## Architecture
 
@@ -87,10 +87,11 @@ curl http://localhost:3000/health
 | `NODE_ENV`              | No       | `development` or `production`        |
 | `PORT`                  | No       | Auto-set by Render (default: 3000)   |
 | `APP_BASE_URL`          | Yes      | Public URL of this service           |
+| `FROM_EMAIL`            | No       | Sender address (default: `Connabis <no-reply@connabis.com.co>`) |
 | `NOTIFY_EMAIL`          | Yes      | Admin notification email             |
 | `RESEND_API_KEY`        | Yes      | Resend API key                       |
-| `SHOPIFY_STORE_URL`     | Yes      | Shopify store domain                 |
-| `SHOPIFY_API_KEY`       | Yes      | Shopify Admin API access token       |
+| `SHOPIFY_STORE_URL`     | Yes      | **Must be** `connabis.myshopify.com` (not the custom domain) |
+| `SHOPIFY_API_KEY`       | Yes      | Shopify Admin API access token (**must start with `shpat_`**) |
 | `SHOPIFY_API_SECRET`    | Yes      | Shopify API secret key               |
 | `SHOPIFY_WEBHOOK_SECRET`| Yes      | Shopify webhook signing secret       |
 | `SUMA_BASE_URL`         | Yes      | SUMA API base URL                    |
@@ -186,10 +187,11 @@ curl -X POST http://localhost:3000/suma/webhook \
 ## Key Design Decisions
 
 - **Stateless:** No database. All state lives in Shopify (customer metafields) and SUMA.
+- **Sequential Verified Numbers:** Queries Shopify GraphQL API for the highest existing `custom.verified_number` across all "Verified"-tagged customers, then assigns max + 1. Currently at 299, so next = 300.
 - **ESM Only:** All code uses ES Modules (`type: "module"` in package.json).
 - **Async Webhook Processing:** Shopify webhook responds immediately with 200, then processes verification asynchronously to avoid Shopify's 5-second timeout.
 - **Secure:** HMAC verification for Shopify webhooks. Timing-safe comparison to prevent timing attacks.
-- **Graceful Failures:** Non-critical failures (like Shopify metafield updates) don't break the main flow.
+- **Graceful Failures:** Non-critical failures (like Shopify metafield updates) don't break the main flow. If the sequential number query fails, a timestamp-based fallback is used.
 
 ## Troubleshooting
 

@@ -39,7 +39,7 @@ export async function createSumaVerification({ customerId, email, firstName, las
 
   const token = await getSumaAccessToken();
   const baseUrl = process.env.SUMA_BASE_URL;
-  const appBaseUrl = process.env.APP_BASE_URL;
+  const appBaseUrl = process.env.APP_BASE_URL || process.env.VERIFICATION_HOST;
 
   const payload = {
     external_id: `shopify_customer_${customerId}`,

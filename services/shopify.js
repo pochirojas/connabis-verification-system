@@ -1,25 +1,25 @@
 // services/shopify.js — Shopify Admin API Client
-// Handles: adding "verified" tag + setting verified number metafield
+// Handles: adding "Verified" tag + setting sequential verified number metafield
+// Sequential numbering: queries Shopify GraphQL for the highest existing
+// custom.verified_number and increments by 1. No database needed.
 import fetch from 'node-fetch';
 
-// Generate the next verified number
-// Format: VRF-YYYYMMDD-XXXX (e.g., VRF-20260320-0001)
-// The date portion ensures uniqueness across days
-// The counter portion is based on timestamp milliseconds for uniqueness
-function generateVerifiedNumber() {
-  const now = new Date();
-  const date = now.toISOString().slice(0, 10).replace(/-/g, '');
-  const counter = String(now.getTime() % 10000).padStart(4, '0');
-  return `VRF-${date}-${counter}`;
-}
+// ─── Configuration ───────────────────────────────────────────────
+const VERIFIED_TAG = 'Verified';
+const METAFIELD_NAMESPACE = 'custom';
+const METAFIELD_KEY = 'verified_number';
+// If no verified customers exist yet, the first number assigned will be this:
+const STARTING_NUMBER = 300;
 
-// Helper: Make authenticated request to Shopify Admin API
+// ─── Helpers ─────────────────────────────────────────────────────
+
+// Make authenticated REST request to Shopify Admin API
 async function shopifyAdminFetch(endpoint, options = {}) {
   const storeUrl = process.env.SHOPIFY_STORE_URL;
-  const apiKey = process.env.SHOPIFY_API_KEY;
+  const token = process.env.SHOPIFY_API_KEY;
 
-  if (!storeUrl || !apiKey) {
-    console.warn('[Shopify API] Store URL or API key not configured, skipping');
+  if (!storeUrl || !token) {
+    console.warn('[Shopify] Store URL or access token not configured, skipping');
     return null;
   }
 
@@ -27,79 +27,188 @@ async function shopifyAdminFetch(endpoint, options = {}) {
   const res = await fetch(url, {
     ...options,
     headers: {
-      'X-Shopify-Access-Token': apiKey,
+      'X-Shopify-Access-Token': token,
       'Content-Type': 'application/json',
       ...options.headers
     }
   });
 
   if (!res.ok) {
-    const error = await res.text();
-    throw new Error(`Shopify API error (${res.status}): ${error}`);
+    const body = await res.text();
+    throw new Error(`Shopify REST ${res.status}: ${body}`);
   }
-
   return res.json();
 }
 
-// Add "verified" tag to customer
-export async function addVerifiedTag(customerId) {
-  console.log('[Shopify API] Adding verified tag to customer:', customerId);
+// Make authenticated GraphQL request to Shopify Admin API
+async function shopifyGraphQL(query, variables = {}) {
+  const storeUrl = process.env.SHOPIFY_STORE_URL;
+  const token = process.env.SHOPIFY_API_KEY;
 
-  // Shopify REST API for tags
+  if (!storeUrl || !token) {
+    console.warn('[Shopify] Store URL or access token not configured, skipping');
+    return null;
+  }
+
+  const url = `https://${storeUrl}/admin/api/2024-01/graphql.json`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'X-Shopify-Access-Token': token,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ query, variables })
+  });
+
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Shopify GraphQL ${res.status}: ${body}`);
+  }
+
+  const json = await res.json();
+  if (json.errors?.length) {
+    throw new Error(`Shopify GraphQL error: ${JSON.stringify(json.errors)}`);
+  }
+  return json.data;
+}
+
+// ─── Sequential Number ───────────────────────────────────────────
+// Query all customers who have the "Verified" tag, pull their
+// custom.verified_number metafield, find the max, and return max + 1.
+// This is stateless — Shopify is the single source of truth.
+
+async function getNextVerifiedNumber() {
+  console.log('[Shopify] Querying highest verified_number via GraphQL...');
+
+  // Search for customers with the "Verified" tag and their metafield value.
+  // We sort by updated_at DESC and paginate to scan through all verified customers.
+  // In practice this should be a small set (hundreds, not millions).
+  let maxNumber = STARTING_NUMBER - 1; // so first assigned = STARTING_NUMBER
+  let hasNextPage = true;
+  let cursor = null;
+
+  while (hasNextPage) {
+    const afterClause = cursor ? `, after: "${cursor}"` : '';
+    const query = `{
+      customers(first: 100, query: "tag:Verified"${afterClause}) {
+        edges {
+          cursor
+          node {
+            metafield(namespace: "${METAFIELD_NAMESPACE}", key: "${METAFIELD_KEY}") {
+              value
+            }
+          }
+        }
+        pageInfo {
+          hasNextPage
+        }
+      }
+    }`;
+
+    const data = await shopifyGraphQL(query);
+    if (!data?.customers) break;
+
+    for (const edge of data.customers.edges) {
+      const val = edge.node.metafield?.value;
+      if (val != null) {
+        const num = parseInt(val, 10);
+        if (!isNaN(num) && num > maxNumber) {
+          maxNumber = num;
+        }
+      }
+      cursor = edge.cursor;
+    }
+
+    hasNextPage = data.customers.pageInfo.hasNextPage;
+  }
+
+  const next = maxNumber + 1;
+  console.log(`[Shopify] Highest verified_number found: ${maxNumber}, next: ${next}`);
+  return next;
+}
+
+// ─── Public API ──────────────────────────────────────────────────
+
+// Add "Verified" tag to a customer (appends to existing tags)
+export async function addVerifiedTag(customerId) {
+  console.log('[Shopify] Adding Verified tag to customer:', customerId);
+
+  // First fetch current tags so we don't overwrite them
+  const { customer } = await shopifyAdminFetch(`/customers/${customerId}.json`);
+  const currentTags = customer?.tags || '';
+
+  // Check if already tagged
+  const tagsArray = currentTags.split(',').map(t => t.trim()).filter(Boolean);
+  if (tagsArray.some(t => t.toLowerCase() === 'verified')) {
+    console.log('[Shopify] Customer already has Verified tag, skipping');
+    return { customer };
+  }
+
+  // Append the new tag
+  const newTags = currentTags ? `${currentTags}, ${VERIFIED_TAG}` : VERIFIED_TAG;
+
   const data = await shopifyAdminFetch(`/customers/${customerId}.json`, {
     method: 'PUT',
     body: JSON.stringify({
-      customer: {
-        id: customerId,
-        tags: 'verified'  // Shopify appends to existing tags
-      }
+      customer: { id: customerId, tags: newTags }
     })
   });
 
-  console.log('[Shopify API] Verified tag added successfully');
+  console.log('[Shopify] Verified tag added successfully');
   return data;
 }
 
 // Set the verified number metafield on a customer
-// IMPORTANT: Update namespace and key below to match your actual Shopify metafield definition
 export async function setVerifiedNumber(customerId, verifiedNumber) {
-  console.log('[Shopify API] Setting verified number for customer:', customerId, '→', verifiedNumber);
+  console.log('[Shopify] Setting verified number for customer:', customerId, '→', verifiedNumber);
 
   const data = await shopifyAdminFetch(`/customers/${customerId}/metafields.json`, {
     method: 'POST',
     body: JSON.stringify({
       metafield: {
-        // ⚠️ UPDATE THESE TO MATCH YOUR ACTUAL METAFIELD DEFINITION:
-        namespace: process.env.VERIFIED_METAFIELD_NAMESPACE || 'custom',
-        key: process.env.VERIFIED_METAFIELD_KEY || 'verified_number',
-        value: verifiedNumber,
-        type: 'single_line_text_field'
+        namespace: METAFIELD_NAMESPACE,
+        key: METAFIELD_KEY,
+        value: String(verifiedNumber),
+        type: 'number_integer'
       }
     })
   });
 
-  console.log('[Shopify API] Verified number metafield set successfully');
+  console.log('[Shopify] Verified number metafield set successfully');
   return data;
 }
 
-// Main function: Mark a customer as verified (tag + metafield)
+// Main entry point: Mark a customer as verified
+// 1. Query Shopify for the next sequential verified number
+// 2. Add "Verified" tag
+// 3. Set custom.verified_number metafield
 export async function markCustomerVerified(customerId) {
-  const verifiedNumber = generateVerifiedNumber();
-  console.log('[Shopify API] Marking customer', customerId, 'as verified with number:', verifiedNumber);
+  console.log('[Shopify] Marking customer', customerId, 'as verified');
 
+  // Step 1: Get next sequential number from Shopify (stateless)
+  let verifiedNumber;
   try {
-    // Step 1: Add "verified" tag
-    await addVerifiedTag(customerId);
+    verifiedNumber = await getNextVerifiedNumber();
   } catch (error) {
-    console.error('[Shopify API] Failed to add verified tag:', error.message);
-    // Continue to try setting metafield even if tag fails
+    console.error('[Shopify] Failed to query next verified number:', error.message);
+    // Fallback: use timestamp-based number to avoid blocking verification
+    verifiedNumber = STARTING_NUMBER + Date.now() % 100000;
+    console.warn('[Shopify] Using fallback number:', verifiedNumber);
   }
 
+  // Step 2: Add "Verified" tag
   try {
-    // Step 2: Set verified number metafield
+    await addVerifiedTag(customerId);
+  } catch (error) {
+    console.error('[Shopify] Failed to add Verified tag:', error.message);
+    // Continue — metafield is more important than tag
+  }
+
+  // Step 3: Set verified number metafield
+  try {
     await setVerifiedNumber(customerId, verifiedNumber);
   } catch (error) {
-    console.error('[Shopify API] Failed to set verified number:', error.message);
+    console.error('[Shopify] Failed to set verified number:', error.message);
   }
 
   return { verifiedNumber, customerId };

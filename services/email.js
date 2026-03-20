@@ -1,6 +1,8 @@
 // services/email.js — Resend Email Client
 import { Resend } from 'resend';
 
+const DEFAULT_FROM = 'Connabis <no-reply@connabis.com.co>';
+
 function getResendClient() {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
@@ -9,13 +11,17 @@ function getResendClient() {
   return new Resend(apiKey);
 }
 
+function getFromEmail() {
+  return process.env.FROM_EMAIL || DEFAULT_FROM;
+}
+
 // Test email function
 export async function sendTestEmail() {
   console.log('[Email] Sending test email...');
   const resend = getResendClient();
 
   return resend.emails.send({
-    from: 'Connabis <no-reply@connabis.com.co>',
+    from: getFromEmail(),
     to: process.env.NOTIFY_EMAIL || 'connabisco@gmail.com',
     subject: 'Test Email - Verification System Operational',
     html: `
@@ -37,7 +43,7 @@ export async function sendVerificationEmail({ to, link }) {
   const resend = getResendClient();
 
   return resend.emails.send({
-    from: 'Connabis <no-reply@connabis.com.co>',
+    from: getFromEmail(),
     to,
     subject: 'Verifica tu Edad - Connabis',
     html: `
@@ -96,7 +102,7 @@ export async function sendVerificationResultEmail({ customerId, email, status, r
   const statusBg = status === 'verified' ? '#d4edda' : '#f8d7da';
 
   return resend.emails.send({
-    from: 'Connabis System <no-reply@connabis.com.co>',
+    from: getFromEmail(),
     to: process.env.NOTIFY_EMAIL || 'connabisco@gmail.com',
     subject: `${statusEmoji} Customer Verification ${status.toUpperCase()} - ${email}`,
     html: `
