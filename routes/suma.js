@@ -1,15 +1,16 @@
-// routes/suma.js — SUMA Callbacks & Webhook Handlers
+// routes/suma.js — VeriDocID Webhook & Callback Handlers
 import express from 'express';
 import { sendVerificationResultEmail } from '../services/email.js';
 import { markCustomerVerified } from '../services/shopify.js';
+import { checkVerificationStatus, getVerificationResults } from '../services/suma.js';
 
 const router = express.Router();
 
-// User redirect after completing SUMA verification
-// SUMA redirects the user here after they finish the verification process
+// ─── User redirect after completing VeriDocID verification ───────────
+// VeriDocID redirects user here via redirect_url set in createVerification
 router.get('/callback', (req, res) => {
-  const { status } = req.query;
-  console.log('[SUMA Callback] User redirected with status:', status);
+  const { status, customer } = req.query;
+  console.log('[VeriDocID Callback] User redirected. Status:', status, '| Customer:', customer);
 
   if (status === 'success' || status === 'completed') {
     res.send(`
@@ -48,8 +49,8 @@ router.get('/callback', (req, res) => {
             <div class="icon">✅</div>
             <h1>Verificación Completada</h1>
             <p>
-              Tu cuenta ha sido verificada exitosamente.
-              Ya puedes disfrutar de todos nuestros productos.
+              Tu proceso de verificación ha sido enviado exitosamente.
+              Recibirás un correo con los resultados pronto.
             </p>
             <a href="https://connabis.com.co" class="btn">
               Volver a Connabis
@@ -108,76 +109,187 @@ router.get('/callback', (req, res) => {
   }
 });
 
-// SUMA webhook for verification results
-// SUMA sends a POST here when the customer completes (or fails) verification
+// ─── VeriDocID Webhook (configured by SUMA team) ───────────────────
+// SUMA configures this webhook on their side to POST results when verification completes
+// Payload format: VeriDocID results JSON (same as /api/id/v3/results response)
 router.post('/webhook', express.json(), async (req, res) => {
-  console.log('[SUMA Webhook] Received payload:', JSON.stringify(req.body, null, 2));
+  console.log('[VeriDocID Webhook] Received payload:', JSON.stringify(req.body, null, 2));
+
+  // Acknowledge immediately
+  res.status(200).json({ received: true });
 
   try {
-    const {
-      verification_id,
-      external_id,
-      status,
-      email,
-      document_valid,
-      face_match,
-      liveness_passed,
-      failure_reason,
-      document_type,
-      age,
-      date_of_birth
-    } = req.body;
+    const payload = req.body;
 
-    // Extract Shopify customer ID from external_id
-    const customerId = external_id?.replace('shopify_customer_', '');
+    // VeriDocID payloads can vary — extract what we can
+    // The "id" field we set during createVerification is "shopify_<customerId>"
+    const verificationId = payload.uuid || payload.id || payload.verification_id;
+    const externalId = payload.externalId || payload.external_id || payload.id || '';
 
-    // Determine overall verification status
-    const isVerified = status === 'completed' &&
-                       document_valid === true &&
-                       face_match === true &&
-                       liveness_passed === true;
+    // Extract customer ID from our external_id format: "shopify_<id>"
+    let customerId = null;
+    if (typeof externalId === 'string' && externalId.startsWith('shopify_')) {
+      customerId = externalId.replace('shopify_', '');
+    }
 
-    console.log('[SUMA Webhook] Verification result:', {
+    // Try to determine verification result from payload
+    // VeriDocID results contain globalResult, facialVerification, livenessTest, etc.
+    const globalResult = payload.globalResult || payload.global_result || payload.result;
+    const facialResult = payload.facialVerification || payload.facial_verification;
+    const livenessResult = payload.livenessTest || payload.liveness_test;
+
+    // Check various ways VeriDocID might indicate success
+    const isVerified = determineVerificationSuccess(payload, globalResult, facialResult, livenessResult);
+
+    const email = payload.email || null;
+
+    console.log('[VeriDocID Webhook] Parsed result:', {
+      verificationId,
       customerId,
       email,
       isVerified,
-      status,
-      document_valid,
-      face_match,
-      liveness_passed,
-      age
+      globalResult: typeof globalResult === 'object' ? JSON.stringify(globalResult) : globalResult
     });
 
-    // Step 1: Send notification to Connabis admin
-    console.log('[SUMA Webhook] Sending admin notification...');
+    // Step 1: Send admin notification
+    console.log('[VeriDocID Webhook] Sending admin notification...');
     await sendVerificationResultEmail({
-      customerId,
-      email,
+      customerId: customerId || verificationId,
+      email: email || 'unknown',
       status: isVerified ? 'verified' : 'failed',
-      reason: failure_reason || (isVerified ? null : 'One or more verification checks failed')
+      reason: isVerified ? null : extractFailureReason(payload)
     });
-    console.log('[SUMA Webhook] Admin notification email sent');
+    console.log('[VeriDocID Webhook] Admin notification sent');
 
-    // Step 2: If verified, add "verified" tag + assign verified number on Shopify
+    // Step 2: If verified and we have a customer ID, mark verified in Shopify
     if (customerId && isVerified) {
       try {
         const result = await markCustomerVerified(customerId);
-        console.log('[SUMA Webhook] Customer marked as verified:', result.verifiedNumber);
+        console.log('[VeriDocID Webhook] Customer marked as verified, number:', result.verifiedNumber);
       } catch (shopifyError) {
-        // Don't fail the webhook if Shopify update fails
-        console.error('[SUMA Webhook] Shopify update failed (non-critical):', shopifyError.message);
+        console.error('[VeriDocID Webhook] Shopify update failed (non-critical):', shopifyError.message);
       }
     } else if (customerId && !isVerified) {
-      console.log('[SUMA Webhook] Customer', customerId, 'failed verification — no tag/number assigned');
+      console.log('[VeriDocID Webhook] Customer', customerId, 'failed verification — no tag/number assigned');
+    } else {
+      console.log('[VeriDocID Webhook] No customer ID found in payload — admin notified only');
     }
 
-    res.status(200).json({ received: true });
+  } catch (error) {
+    console.error('[VeriDocID Webhook] Error processing:', error.message);
+    console.error('[VeriDocID Webhook] Stack:', error.stack);
+  }
+});
+
+// ─── Manual status check endpoint (fallback if webhook doesn't fire) ───
+// GET /suma/check/:uuid?customer=<shopifyCustomerId>
+router.get('/check/:uuid', async (req, res) => {
+  const { uuid } = req.params;
+  const { customer: customerId } = req.query;
+
+  console.log('[VeriDocID Check] Manual check for UUID:', uuid, '| Customer:', customerId);
+
+  try {
+    const status = await checkVerificationStatus(uuid);
+
+    if (status === 'Checked') {
+      // Get full results
+      const results = await getVerificationResults(uuid);
+      const isVerified = determineVerificationSuccess(results);
+
+      if (customerId && isVerified) {
+        try {
+          const shopifyResult = await markCustomerVerified(customerId);
+          console.log('[VeriDocID Check] Customer marked as verified:', shopifyResult.verifiedNumber);
+        } catch (shopifyError) {
+          console.error('[VeriDocID Check] Shopify update failed:', shopifyError.message);
+        }
+      }
+
+      // Send admin notification
+      await sendVerificationResultEmail({
+        customerId: customerId || uuid,
+        email: results.email || 'unknown',
+        status: isVerified ? 'verified' : 'failed',
+        reason: isVerified ? null : extractFailureReason(results)
+      });
+
+      res.json({ uuid, status, verified: isVerified, results: results });
+    } else {
+      res.json({ uuid, status, message: `Verification still in progress (${status})` });
+    }
 
   } catch (error) {
-    console.error('[SUMA Webhook] Error processing webhook:', error.message);
-    console.error('[SUMA Webhook] Stack:', error.stack);
+    console.error('[VeriDocID Check] Error:', error.message);
     res.status(500).json({ error: error.message });
   }
 });
+
+// ─── Helper: Determine if verification was successful ─────────────
+function determineVerificationSuccess(payload, globalResult, facialResult, livenessResult) {
+  if (!payload) return false;
+
+  // Use top-level fields if not passed separately
+  globalResult = globalResult || payload.globalResult || payload.global_result || payload.result;
+  facialResult = facialResult || payload.facialVerification || payload.facial_verification;
+  livenessResult = livenessResult || payload.livenessTest || payload.liveness_test;
+
+  // Method 1: Direct status field
+  if (payload.status === 'approved' || payload.status === 'verified' || payload.status === 'passed') {
+    return true;
+  }
+
+  // Method 2: globalResult indicates success
+  if (globalResult) {
+    const resultStr = typeof globalResult === 'string' ? globalResult.toLowerCase() : '';
+    if (resultStr === 'passed' || resultStr === 'approved' || resultStr === 'verified') {
+      return true;
+    }
+    // If globalResult is an object, check its status/result field
+    if (typeof globalResult === 'object') {
+      const innerResult = (globalResult.status || globalResult.result || '').toLowerCase();
+      if (innerResult === 'passed' || innerResult === 'approved') return true;
+    }
+  }
+
+  // Method 3: Check individual verification components
+  // VeriDocID may have boolean or string results for each check
+  const facialPassed = facialResult === true ||
+    (typeof facialResult === 'string' && facialResult.toLowerCase() === 'passed') ||
+    (typeof facialResult === 'object' && (facialResult?.result === 'passed' || facialResult?.passed === true));
+
+  const livenessPassed = livenessResult === true ||
+    (typeof livenessResult === 'string' && livenessResult.toLowerCase() === 'passed') ||
+    (typeof livenessResult === 'object' && (livenessResult?.result === 'passed' || livenessResult?.passed === true));
+
+  // If we have facial and liveness info and both pass, consider verified
+  if (facialResult !== undefined && livenessResult !== undefined) {
+    return facialPassed && livenessPassed;
+  }
+
+  // Method 4: Check for explicit failure indicators
+  if (payload.status === 'failed' || payload.status === 'rejected' || payload.status === 'denied') {
+    return false;
+  }
+
+  // Default: log warning and return false (conservative — don't auto-verify on unknown format)
+  console.warn('[VeriDocID] Could not determine verification result from payload — defaulting to false');
+  console.warn('[VeriDocID] Payload keys:', Object.keys(payload));
+  return false;
+}
+
+// ─── Helper: Extract failure reason from payload ──────────────────
+function extractFailureReason(payload) {
+  if (!payload) return 'Unknown failure';
+
+  // Check common fields
+  return payload.failureReason ||
+    payload.failure_reason ||
+    payload.reason ||
+    payload.message ||
+    payload.error ||
+    (payload.globalResult && typeof payload.globalResult === 'string' ? payload.globalResult : null) ||
+    'Verification checks did not pass';
+}
 
 export default router;
