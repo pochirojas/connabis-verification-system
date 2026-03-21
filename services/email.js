@@ -15,13 +15,18 @@ function getFromEmail() {
   return process.env.FROM_EMAIL || DEFAULT_FROM;
 }
 
+// Log FROM_EMAIL on first import so we can see what the server is using
+console.log('[Email] FROM_EMAIL configured as:', getFromEmail());
+
 // Test email function
 export async function sendTestEmail() {
   console.log('[Email] Sending test email...');
   const resend = getResendClient();
+  const from = getFromEmail();
+  console.log('[Email] Test email from:', from);
 
-  return resend.emails.send({
-    from: getFromEmail(),
+  const { data, error } = await resend.emails.send({
+    from,
     to: process.env.NOTIFY_EMAIL || 'connabisco@gmail.com',
     subject: 'Test Email - Verification System Operational',
     html: `
@@ -35,15 +40,24 @@ export async function sendTestEmail() {
       </div>
     `
   });
+
+  if (error) {
+    console.error('[Email] Resend API error (test):', JSON.stringify(error));
+    throw new Error(`Resend test email failed: ${error.message}`);
+  }
+
+  console.log('[Email] Test email accepted, ID:', data?.id);
+  return data;
 }
 
 // Send verification link to customer
 export async function sendVerificationEmail({ to, link }) {
-  console.log('[Email] Sending verification email to:', to);
+  const from = getFromEmail();
+  console.log('[Email] Sending verification email to:', to, '| From:', from);
   const resend = getResendClient();
 
-  return resend.emails.send({
-    from: getFromEmail(),
+  const { data, error } = await resend.emails.send({
+    from,
     to,
     subject: 'Verifica tu Edad - Connabis',
     html: `
@@ -90,19 +104,28 @@ export async function sendVerificationEmail({ to, link }) {
       </div>
     `
   });
+
+  if (error) {
+    console.error('[Email] Resend API error:', JSON.stringify(error));
+    throw new Error(`Resend email failed: ${error.message}`);
+  }
+
+  console.log('[Email] Resend accepted, ID:', data?.id);
+  return data;
 }
 
 // Send verification result notification to admin
 export async function sendVerificationResultEmail({ customerId, email, status, reason }) {
-  console.log('[Email] Sending verification result notification to admin');
+  const from = getFromEmail();
+  console.log('[Email] Sending admin notification | From:', from);
   const resend = getResendClient();
 
   const statusEmoji = status === 'verified' ? '✅' : '❌';
   const statusColor = status === 'verified' ? '#28a745' : '#dc3545';
   const statusBg = status === 'verified' ? '#d4edda' : '#f8d7da';
 
-  return resend.emails.send({
-    from: getFromEmail(),
+  const { data, error } = await resend.emails.send({
+    from,
     to: process.env.NOTIFY_EMAIL || 'connabisco@gmail.com',
     subject: `${statusEmoji} Customer Verification ${status.toUpperCase()} - ${email}`,
     html: `
@@ -154,4 +177,12 @@ export async function sendVerificationResultEmail({ customerId, email, status, r
       </div>
     `
   });
+
+  if (error) {
+    console.error('[Email] Resend API error (admin):', JSON.stringify(error));
+    throw new Error(`Resend admin email failed: ${error.message}`);
+  }
+
+  console.log('[Email] Admin notification accepted, ID:', data?.id);
+  return data;
 }
