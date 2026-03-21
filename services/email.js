@@ -1,7 +1,22 @@
 // services/email.js — Resend Email Client
 import { Resend } from 'resend';
+import { readFileSync } from 'fs';
+import { dirname, join } from 'path';
+import { fileURLToPath } from 'url';
 
+const __dirname = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_FROM = 'Connabis <no-reply@connabis.com.co>';
+
+// Load email template at startup
+const VERIFICATION_TEMPLATE_PATH = join(__dirname, '..', 'templates', 'verification-email.html');
+let verificationTemplate;
+try {
+  verificationTemplate = readFileSync(VERIFICATION_TEMPLATE_PATH, 'utf-8');
+  console.log('[Email] Verification template loaded from:', VERIFICATION_TEMPLATE_PATH);
+} catch (err) {
+  console.warn('[Email] Template not found, using inline fallback:', err.message);
+  verificationTemplate = null;
+}
 
 function getResendClient() {
   const apiKey = process.env.RESEND_API_KEY;
@@ -56,53 +71,19 @@ export async function sendVerificationEmail({ to, link }) {
   console.log('[Email] Sending verification email to:', to, '| From:', from);
   const resend = getResendClient();
 
+  // Build HTML from template or fallback
+  let html;
+  if (verificationTemplate) {
+    html = verificationTemplate.replace(/{{VERIFICATION_LINK}}/g, link);
+  } else {
+    html = `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;"><div style="background:#2d6a4f;padding:30px;text-align:center;"><h1 style="color:#fff;margin:0;font-size:28px;">Connabis</h1></div><div style="padding:40px 30px;"><h2 style="color:#2d6a4f;">Bienvenido a Connabis</h2><p>Para completar tu cuenta, verifica tu identidad.</p><p style="text-align:center;margin:35px 0;"><a href="${link}" style="background:#2d6a4f;color:#fff;padding:16px 32px;text-decoration:none;border-radius:6px;font-weight:bold;">Verificar Ahora</a></p></div></div>`;
+  }
+
   const { data, error } = await resend.emails.send({
     from,
     to,
     subject: 'Verifica tu Edad - Connabis',
-    html: `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff;">
-        <!-- Header -->
-        <div style="background-color: #2d6a4f; padding: 30px; text-align: center;">
-          <h1 style="color: #ffffff; margin: 0; font-size: 28px;">Connabis</h1>
-        </div>
-
-        <!-- Body -->
-        <div style="padding: 40px 30px;">
-          <h2 style="color: #2d6a4f; margin-top: 0;">Bienvenido a Connabis</h2>
-          <p style="color: #333; font-size: 16px; line-height: 1.6;">
-            Para completar la configuración de tu cuenta, necesitamos verificar tu edad e identidad.
-            Este es un requisito legal para la compra de productos de cannabis.
-          </p>
-
-          <p style="color: #333; font-size: 16px; line-height: 1.6;">
-            El proceso es rápido y seguro. Solo necesitas tu documento de identidad y una selfie.
-          </p>
-
-          <div style="text-align: center; margin: 35px 0;">
-            <a href="${link}"
-               style="background-color: #2d6a4f; color: white; padding: 16px 32px;
-                      text-decoration: none; border-radius: 6px; display: inline-block;
-                      font-size: 16px; font-weight: bold;">
-              Verificar Ahora
-            </a>
-          </div>
-
-          <p style="color: #666; font-size: 13px; line-height: 1.5;">
-            Este enlace expira en 24 horas. Si no creaste una cuenta en Connabis,
-            puedes ignorar este correo.
-          </p>
-        </div>
-
-        <!-- Footer -->
-        <div style="background-color: #f5f5f5; padding: 20px 30px; border-top: 1px solid #eee;">
-          <p style="color: #999; font-size: 11px; margin: 0; text-align: center;">
-            Connabis - Productos de Cannabis | connabis.com.co<br>
-            Floridablanca, Santander, Colombia
-          </p>
-        </div>
-      </div>
-    `
+    html
   });
 
   if (error) {
