@@ -72,11 +72,14 @@ export async function sendVerificationEmail({ to, link }) {
   const resend = getResendClient();
 
   // Build HTML from template or fallback
+  const bannerUrl = `${process.env.APP_BASE_URL || 'http://localhost:3000'}/public/banner.jpg`;
   let html;
   if (verificationTemplate) {
-    html = verificationTemplate.replace(/{{VERIFICATION_LINK}}/g, link);
+    html = verificationTemplate
+      .replace(/{{VERIFICATION_LINK}}/g, link)
+      .replace(/{{BANNER_URL}}/g, bannerUrl);
   } else {
-    html = `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;"><div style="background:#2d6a4f;padding:30px;text-align:center;"><h1 style="color:#fff;margin:0;font-size:28px;">Connabis</h1></div><div style="padding:40px 30px;"><h2 style="color:#2d6a4f;">Bienvenido a Connabis</h2><p>Para completar tu cuenta, verifica tu identidad.</p><p style="text-align:center;margin:35px 0;"><a href="${link}" style="background:#2d6a4f;color:#fff;padding:16px 32px;text-decoration:none;border-radius:6px;font-weight:bold;">Verificar Ahora</a></p></div></div>`;
+    html = `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;"><img src="${bannerUrl}" alt="REGISTRO EXITOSO - Connabis" style="width:100%;display:block;"><div style="padding:32px 30px;"><h2 style="color:#1a1a1a;font-weight:700;">¡Agradecemos tu interes en ser miembro!</h2><p style="color:#333;font-size:15px;line-height:1.7;">Estas a un paso de terminar tu proceso de <span style="text-decoration:underline;">verificación</span>, por favor asegurate de leer todas las instrucciones ya que te guiaremos paso a paso para segurarnos que toda tu información sea recibida y procesada lo más rápido posible</p><p style="text-align:center;"><a href="${link}" style="color:#1a1a1a;font-weight:bold;text-decoration:underline;font-size:16px;">Continuar con el último paso</a></p><p style="color:#888;font-size:13px;">Por favor no responda a este correo.</p><p style="color:#666;font-size:14px;">Te deseamos un día Connábico,</p><p style="color:#666;font-size:14px;font-weight:600;">El equipo de Connabis Colombia</p></div></div>`;
   }
 
   const { data, error } = await resend.emails.send({
@@ -92,6 +95,77 @@ export async function sendVerificationEmail({ to, link }) {
   }
 
   console.log('[Email] Resend accepted, ID:', data?.id);
+  return data;
+}
+
+// Send debug admin email after SUMA webhook processing (to connabisco@gmail.com)
+export async function sendDebugAdminEmail({
+  isVerified, customerName, email, customerId, verifiedNumber,
+  globalResult, scoreLiveness, scoreFaceMatch, resutlLiveness, resultFaceMatch,
+  globalResultDescription, failureReason, rawPayload
+}) {
+  const from = getFromEmail();
+  const resend = getResendClient();
+
+  const displayName = customerName || email || 'Unknown';
+  const subject = isVerified
+    ? `[VERIFICACIÓN EXITOSA] ${displayName}`
+    : `[VERIFICACIÓN FALLIDA] ${displayName}`;
+
+  let body;
+  if (isVerified) {
+    body = `
+      <div style="font-family: monospace; max-width: 700px; margin: 0 auto; padding: 16px;">
+        <h2 style="color: #28a745; border-bottom: 2px solid #28a745; padding-bottom: 8px;">VERIFICACIÓN EXITOSA</h2>
+        <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+          <tr><td style="padding: 6px 8px; font-weight: bold; width: 180px;">Nombre:</td><td style="padding: 6px 8px;">${customerName || 'N/A'}</td></tr>
+          <tr><td style="padding: 6px 8px; font-weight: bold;">Email:</td><td style="padding: 6px 8px;">${email || 'N/A'}</td></tr>
+          <tr><td style="padding: 6px 8px; font-weight: bold;">Customer ID:</td><td style="padding: 6px 8px;">${customerId || 'N/A'}</td></tr>
+          <tr><td style="padding: 6px 8px; font-weight: bold;">Verified Number:</td><td style="padding: 6px 8px; font-weight: bold; color: #28a745;">${verifiedNumber || 'N/A'}</td></tr>
+          <tr><td style="padding: 6px 8px; font-weight: bold;">Global Result:</td><td style="padding: 6px 8px;">${globalResult || 'N/A'}</td></tr>
+          <tr><td style="padding: 6px 8px; font-weight: bold;">Liveness Score:</td><td style="padding: 6px 8px;">${scoreLiveness ?? 'N/A'}</td></tr>
+          <tr><td style="padding: 6px 8px; font-weight: bold;">Face Match Score:</td><td style="padding: 6px 8px;">${scoreFaceMatch ?? 'N/A'}</td></tr>
+          <tr><td style="padding: 6px 8px; font-weight: bold;">Liveness Result:</td><td style="padding: 6px 8px;">${resutlLiveness || 'N/A'}</td></tr>
+          <tr><td style="padding: 6px 8px; font-weight: bold;">Face Match Result:</td><td style="padding: 6px 8px;">${resultFaceMatch || 'N/A'}</td></tr>
+          <tr><td style="padding: 6px 8px; font-weight: bold;">Timestamp:</td><td style="padding: 6px 8px;">${new Date().toISOString()}</td></tr>
+        </table>
+      </div>`;
+  } else {
+    body = `
+      <div style="font-family: monospace; max-width: 700px; margin: 0 auto; padding: 16px;">
+        <h2 style="color: #dc3545; border-bottom: 2px solid #dc3545; padding-bottom: 8px;">VERIFICACIÓN FALLIDA</h2>
+        <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+          <tr><td style="padding: 6px 8px; font-weight: bold; width: 180px;">Email:</td><td style="padding: 6px 8px;">${email || 'N/A'}</td></tr>
+          <tr><td style="padding: 6px 8px; font-weight: bold;">Customer ID:</td><td style="padding: 6px 8px;">${customerId || 'N/A'}</td></tr>
+          <tr><td style="padding: 6px 8px; font-weight: bold;">Global Result:</td><td style="padding: 6px 8px; color: #dc3545; font-weight: bold;">${globalResult || 'N/A'}</td></tr>
+          <tr><td style="padding: 6px 8px; font-weight: bold;">Description:</td><td style="padding: 6px 8px;">${globalResultDescription || 'N/A'}</td></tr>
+          <tr><td style="padding: 6px 8px; font-weight: bold;">Failure Reason:</td><td style="padding: 6px 8px; color: #dc3545;">${failureReason || 'N/A'}</td></tr>
+          <tr><td style="padding: 6px 8px; font-weight: bold;">Liveness Score:</td><td style="padding: 6px 8px;">${scoreLiveness ?? 'N/A'}</td></tr>
+          <tr><td style="padding: 6px 8px; font-weight: bold;">Liveness Result:</td><td style="padding: 6px 8px;">${resutlLiveness || 'N/A'}</td></tr>
+          <tr><td style="padding: 6px 8px; font-weight: bold;">Face Match Score:</td><td style="padding: 6px 8px;">${scoreFaceMatch ?? 'N/A'}</td></tr>
+          <tr><td style="padding: 6px 8px; font-weight: bold;">Face Match Result:</td><td style="padding: 6px 8px;">${resultFaceMatch || 'N/A'}</td></tr>
+          <tr><td style="padding: 6px 8px; font-weight: bold;">Timestamp:</td><td style="padding: 6px 8px;">${new Date().toISOString()}</td></tr>
+        </table>
+        <details style="margin-top: 12px;">
+          <summary style="cursor: pointer; font-weight: bold; font-size: 13px;">Raw Payload</summary>
+          <pre style="background: #f5f5f5; padding: 12px; overflow-x: auto; font-size: 12px;">${JSON.stringify(rawPayload, null, 2)}</pre>
+        </details>
+      </div>`;
+  }
+
+  const { data, error } = await resend.emails.send({
+    from,
+    to: 'connabisco@gmail.com',
+    subject,
+    html: body
+  });
+
+  if (error) {
+    console.error('[Email] Resend API error (debug admin):', JSON.stringify(error));
+    throw new Error(`Resend debug admin email failed: ${error.message}`);
+  }
+
+  console.log('[Email] Debug admin email sent, ID:', data?.id);
   return data;
 }
 

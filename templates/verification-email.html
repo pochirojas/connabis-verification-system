@@ -4,89 +4,71 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
-<body style="margin: 0; padding: 0; background-color: #f4f4f4; font-family: Arial, sans-serif;">
+<body style="margin: 0; padding: 0; background-color: #ffffff; font-family: Arial, sans-serif;">
 
   <!-- Outer wrapper for email clients -->
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color: #f4f4f4; padding: 40px 0;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color: #ffffff;">
     <tr>
       <td align="center">
 
         <!-- Email container (max 600px) -->
-        <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width: 600px; width: 100%; background-color: #ffffff; border-radius: 8px; overflow: hidden;">
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width: 600px; width: 100%; background-color: #ffffff;">
 
           <!-- ============================================ -->
-          <!-- HEADER — Edit background color, logo, title -->
+          <!-- BANNER — Full-width image at top              -->
           <!-- ============================================ -->
           <tr>
-            <td style="background-color: #2d6a4f; padding: 30px; text-align: center;">
-              <!-- Replace with your logo: <img src="https://your-logo-url.png" alt="Connabis" width="150"> -->
-              <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: 700; letter-spacing: 1px;">
-                Connabis
-              </h1>
+            <td style="padding: 0; text-align: center;">
+              <img src="{{BANNER_URL}}"
+                   alt="REGISTRO EXITOSO - Connabis"
+                   width="600"
+                   style="display: block; width: 100%; max-width: 600px; height: auto; border: 0;">
             </td>
           </tr>
 
           <!-- ============================================ -->
-          <!-- BODY — Edit greeting, description text       -->
+          <!-- BODY — Email content                          -->
           <!-- ============================================ -->
           <tr>
-            <td style="padding: 40px 30px;">
+            <td style="padding: 32px 30px 24px 30px;">
 
-              <!-- Greeting -->
-              <h2 style="color: #2d6a4f; margin: 0 0 16px 0; font-size: 22px; font-weight: 600;">
-                Bienvenido a Connabis
+              <!-- Bold heading -->
+              <h2 style="color: #1a1a1a; margin: 0 0 20px 0; font-size: 20px; font-weight: 700;">
+                ¡Agradecemos tu interes en ser miembro!
               </h2>
 
-              <!-- Description paragraph 1 -->
-              <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">
-                Para completar la configuración de tu cuenta, necesitamos verificar tu edad e identidad.
-                Este es un requisito legal para la compra de productos de cannabis.
+              <!-- Body text -->
+              <p style="color: #333333; font-size: 15px; line-height: 1.7; margin: 0 0 28px 0;">
+                Estas a un paso de terminar tu proceso de <span style="text-decoration: underline;">verificación</span>, por favor asegurate de leer todas las instrucciones ya que te guiaremos paso a paso para segurarnos que toda tu información sea recibida y procesada lo más rápido posible
               </p>
 
-              <!-- Description paragraph 2 -->
-              <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 32px 0;">
-                El proceso es rápido y seguro. Solo necesitas tu documento de identidad y una selfie.
-              </p>
-
-              <!-- ============================================ -->
-              <!-- CTA BUTTON — Edit text, colors, size        -->
-              <!-- ============================================ -->
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-                <tr>
-                  <td align="center">
-                    <a href="{{VERIFICATION_LINK}}"
-                       style="background-color: #2d6a4f;
-                              color: #ffffff;
-                              padding: 16px 32px;
-                              text-decoration: none;
-                              border-radius: 6px;
-                              display: inline-block;
-                              font-size: 16px;
-                              font-weight: bold;
-                              letter-spacing: 0.5px;">
-                      Verificar Ahora
-                    </a>
-                  </td>
-                </tr>
-              </table>
-
-              <!-- Small print -->
-              <p style="color: #888888; font-size: 13px; line-height: 1.5; margin: 32px 0 0 0;">
-                Este enlace expira en 24 horas. Si no creaste una cuenta en Connabis,
-                puedes ignorar este correo.
+              <!-- CTA — Bold underlined text link (not a button) -->
+              <p style="text-align: center; margin: 0 0 32px 0;">
+                <a href="{{VERIFICATION_LINK}}"
+                   style="color: #1a1a1a;
+                          font-size: 16px;
+                          font-weight: bold;
+                          text-decoration: underline;">
+                  Continuar con el último paso
+                </a>
               </p>
 
             </td>
           </tr>
 
           <!-- ============================================ -->
-          <!-- FOOTER — Edit company info, links            -->
+          <!-- FOOTER — Sign-off and disclaimer              -->
           <!-- ============================================ -->
           <tr>
-            <td style="background-color: #f5f5f5; padding: 20px 30px; border-top: 1px solid #eeeeee;">
-              <p style="color: #999999; font-size: 11px; margin: 0; text-align: center; line-height: 1.6;">
-                Connabis - Productos de Cannabis | connabis.com.co<br>
-                Floridablanca, Santander, Colombia
+            <td style="padding: 0 30px 32px 30px;">
+              <p style="color: #888888; font-size: 13px; line-height: 1.6; margin: 0 0 16px 0;">
+                Por favor no responda a este correo.
+              </p>
+              <p style="color: #666666; font-size: 14px; line-height: 1.6; margin: 0 0 4px 0;">
+                Te deseamos un día Connábico,
+              </p>
+              <p style="color: #666666; font-size: 14px; line-height: 1.6; margin: 0; font-weight: 600;">
+                El equipo de Connabis Colombia
               </p>
             </td>
           </tr>

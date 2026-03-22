@@ -4,11 +4,17 @@
 // NO business logic here — only app initialization
 
 import express from 'express';
+import { dirname, join } from 'path';
+import { fileURLToPath } from 'url';
 import shopifyRoutes from './routes/shopify.js';
 import sumaRoutes from './routes/suma.js';
 import { sendTestEmail } from './services/email.js';
 
+const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
+
+// Serve static assets (e.g. email banner images)
+app.use('/public', express.static(join(__dirname, 'public')));
 
 // Middleware: Parse JSON and preserve raw body for HMAC verification
 app.use(express.json({

@@ -1,7 +1,7 @@
 // routes/suma.js — VeriDocID Webhook & Callback Handlers
 import express from 'express';
-import { sendVerificationResultEmail } from '../services/email.js';
-import { markCustomerVerified } from '../services/shopify.js';
+import { sendVerificationResultEmail, sendDebugAdminEmail } from '../services/email.js';
+import { markCustomerVerified, searchCustomerByEmail } from '../services/shopify.js';
 import { checkVerificationStatus, getVerificationResults } from '../services/suma.js';
 
 const router = express.Router();
@@ -124,6 +124,7 @@ router.post('/webhook', express.json(), async (req, res) => {
     // VeriDocID payloads can vary — extract what we can
     // The "id" field we set during createVerification is "shopify_<customerId>"
     const verificationId = payload.uuid || payload.id || payload.verification_id;
+    const identifier = payload.identifier || payload.externalId || payload.external_id || payload.id || '';
     const externalId = payload.externalId || payload.external_id || payload.id || '';
 
     // Extract customer ID from our external_id format: "shopify_<id>"
@@ -141,7 +142,33 @@ router.post('/webhook', express.json(), async (req, res) => {
     // Check various ways VeriDocID might indicate success
     const isVerified = determineVerificationSuccess(payload, globalResult, facialResult, livenessResult);
 
-    const email = payload.email || null;
+    // Extract email: check payload.email, or identifier if it looks like an email
+    let email = payload.email || null;
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!email && typeof identifier === 'string' && emailRegex.test(identifier)) {
+      email = identifier;
+    }
+    if (!email && typeof verificationId === 'string' && emailRegex.test(verificationId)) {
+      email = verificationId;
+    }
+
+    // Bug fix: When customerId is null but we have an email, search Shopify to find the customer
+    let customerName = null;
+    if (!customerId && email) {
+      console.log('[VeriDocID Webhook] No customerId in payload — searching Shopify by email:', email);
+      try {
+        const customerData = await searchCustomerByEmail(email);
+        if (customerData) {
+          customerId = customerData.id;
+          customerName = [customerData.firstName, customerData.lastName].filter(Boolean).join(' ') || null;
+          console.log('[VeriDocID Webhook] Found customer via email lookup:', customerId, '| Name:', customerName);
+        } else {
+          console.log('[VeriDocID Webhook] No Shopify customer found for email:', email);
+        }
+      } catch (lookupError) {
+        console.error('[VeriDocID Webhook] Shopify email lookup failed:', lookupError.message);
+      }
+    }
 
     console.log('[VeriDocID Webhook] Parsed result:', {
       verificationId,
@@ -151,7 +178,23 @@ router.post('/webhook', express.json(), async (req, res) => {
       globalResult: typeof globalResult === 'object' ? JSON.stringify(globalResult) : globalResult
     });
 
-    // Step 1: Send admin notification
+    // Step 1: If verified and we have a customer ID, mark verified in Shopify
+    let verifiedNumber = null;
+    if (customerId && isVerified) {
+      try {
+        const result = await markCustomerVerified(customerId);
+        verifiedNumber = result.verifiedNumber;
+        console.log('[VeriDocID Webhook] Customer marked as verified, number:', verifiedNumber);
+      } catch (shopifyError) {
+        console.error('[VeriDocID Webhook] Shopify update failed (non-critical):', shopifyError.message);
+      }
+    } else if (customerId && !isVerified) {
+      console.log('[VeriDocID Webhook] Customer', customerId, 'failed verification — no tag/number assigned');
+    } else {
+      console.log('[VeriDocID Webhook] No customer ID found in payload — admin notified only');
+    }
+
+    // Step 2: Send legacy admin notification
     console.log('[VeriDocID Webhook] Sending admin notification...');
     await sendVerificationResultEmail({
       customerId: customerId || verificationId,
@@ -161,18 +204,26 @@ router.post('/webhook', express.json(), async (req, res) => {
     });
     console.log('[VeriDocID Webhook] Admin notification sent');
 
-    // Step 2: If verified and we have a customer ID, mark verified in Shopify
-    if (customerId && isVerified) {
-      try {
-        const result = await markCustomerVerified(customerId);
-        console.log('[VeriDocID Webhook] Customer marked as verified, number:', result.verifiedNumber);
-      } catch (shopifyError) {
-        console.error('[VeriDocID Webhook] Shopify update failed (non-critical):', shopifyError.message);
-      }
-    } else if (customerId && !isVerified) {
-      console.log('[VeriDocID Webhook] Customer', customerId, 'failed verification — no tag/number assigned');
-    } else {
-      console.log('[VeriDocID Webhook] No customer ID found in payload — admin notified only');
+    // Step 3: Send debug admin email with detailed SUMA data
+    try {
+      await sendDebugAdminEmail({
+        isVerified,
+        customerName: customerName || email || 'Unknown',
+        email: email || 'unknown',
+        customerId: customerId || null,
+        verifiedNumber,
+        globalResult: typeof globalResult === 'object' ? JSON.stringify(globalResult) : globalResult,
+        scoreLiveness: payload.scoreLiveness || payload.score_liveness || null,
+        scoreFaceMatch: payload.scoreFaceMatch || payload.score_face_match || null,
+        resutlLiveness: payload.resutlLiveness || payload.resultLiveness || null,
+        resultFaceMatch: payload.resultFaceMatch || payload.result_face_match || null,
+        globalResultDescription: payload.globalResultDescription || payload.global_result_description || null,
+        failureReason: isVerified ? null : extractFailureReason(payload),
+        rawPayload: payload
+      });
+      console.log('[VeriDocID Webhook] Debug admin email sent');
+    } catch (debugEmailError) {
+      console.error('[VeriDocID Webhook] Debug email failed (non-critical):', debugEmailError.message);
     }
 
   } catch (error) {
@@ -240,30 +291,34 @@ function determineVerificationSuccess(payload, globalResult, facialResult, liven
   }
 
   // Method 2: globalResult indicates success
+  // SUMA/VeriDocID sends globalResult: 'Ok' on success
   if (globalResult) {
     const resultStr = typeof globalResult === 'string' ? globalResult.toLowerCase() : '';
-    if (resultStr === 'passed' || resultStr === 'approved' || resultStr === 'verified') {
+    if (resultStr === 'ok' || resultStr === 'passed' || resultStr === 'approved' || resultStr === 'verified') {
       return true;
     }
     // If globalResult is an object, check its status/result field
     if (typeof globalResult === 'object') {
       const innerResult = (globalResult.status || globalResult.result || '').toLowerCase();
-      if (innerResult === 'passed' || innerResult === 'approved') return true;
+      if (innerResult === 'ok' || innerResult === 'passed' || innerResult === 'approved') return true;
     }
   }
 
   // Method 3: Check individual verification components
-  // VeriDocID may have boolean or string results for each check
-  const facialPassed = facialResult === true ||
-    (typeof facialResult === 'string' && facialResult.toLowerCase() === 'passed') ||
-    (typeof facialResult === 'object' && (facialResult?.result === 'passed' || facialResult?.passed === true));
+  // VeriDocID fields: resultFaceMatch, resutlLiveness (note: typo is from SUMA API)
+  const faceMatchResult = facialResult || payload.resultFaceMatch || payload.result_face_match;
+  const livenessResultVal = livenessResult || payload.resutlLiveness || payload.resultLiveness || payload.result_liveness;
 
-  const livenessPassed = livenessResult === true ||
-    (typeof livenessResult === 'string' && livenessResult.toLowerCase() === 'passed') ||
-    (typeof livenessResult === 'object' && (livenessResult?.result === 'passed' || livenessResult?.passed === true));
+  const facialPassed = faceMatchResult === true ||
+    (typeof faceMatchResult === 'string' && ['passed', 'ok'].includes(faceMatchResult.toLowerCase())) ||
+    (typeof faceMatchResult === 'object' && (faceMatchResult?.result === 'passed' || faceMatchResult?.passed === true));
+
+  const livenessPassed = livenessResultVal === true ||
+    (typeof livenessResultVal === 'string' && ['passed', 'ok'].includes(livenessResultVal.toLowerCase())) ||
+    (typeof livenessResultVal === 'object' && (livenessResultVal?.result === 'passed' || livenessResultVal?.passed === true));
 
   // If we have facial and liveness info and both pass, consider verified
-  if (facialResult !== undefined && livenessResult !== undefined) {
+  if (faceMatchResult !== undefined && livenessResultVal !== undefined) {
     return facialPassed && livenessPassed;
   }
 

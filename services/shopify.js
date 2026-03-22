@@ -170,6 +170,35 @@ async function getNextVerifiedNumber() {
 
 // ─── Public API ──────────────────────────────────────────────────
 
+// Search for a Shopify customer by email — returns the customer ID or null
+export async function searchCustomerByEmail(email) {
+  console.log('[Shopify] Searching for customer by email:', email);
+
+  const data = await shopifyGraphQL(`{
+    customers(first: 1, query: "email:${email}") {
+      edges {
+        node {
+          id
+          email
+          firstName
+          lastName
+        }
+      }
+    }
+  }`);
+
+  const customer = data?.customers?.edges?.[0]?.node;
+  if (!customer) {
+    console.log('[Shopify] No customer found for email:', email);
+    return null;
+  }
+
+  // GraphQL IDs are like "gid://shopify/Customer/12345" — extract the numeric part
+  const numericId = customer.id.replace('gid://shopify/Customer/', '');
+  console.log('[Shopify] Found customer:', numericId, '|', customer.firstName, customer.lastName, '|', customer.email);
+  return { id: numericId, email: customer.email, firstName: customer.firstName, lastName: customer.lastName };
+}
+
 // Add "Verified" tag to a customer (appends to existing tags)
 export async function addVerifiedTag(customerId) {
   console.log('[Shopify] Adding Verified tag to customer:', customerId);
