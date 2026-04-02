@@ -68,4 +68,21 @@ app.listen(PORT, () => {
   console.log(`✅ Server listening on port ${PORT}`);
   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`Base URL: ${process.env.APP_BASE_URL || 'http://localhost:' + PORT}`);
+
+  // Keep-alive: Ping own health endpoint every 10 minutes to prevent Render
+  // free tier from sleeping the service. Sleeping causes 30s–60s cold start
+  // delays on the next incoming webhook, which can delay emails significantly.
+  const baseUrl = process.env.APP_BASE_URL || `http://localhost:${PORT}`;
+  setInterval(async () => {
+    try {
+      const res = await fetch(`${baseUrl}/health`);
+      if (res.ok) {
+        console.log('[Keep-Alive] Ping OK');
+      } else {
+        console.warn('[Keep-Alive] Ping returned:', res.status);
+      }
+    } catch (err) {
+      console.warn('[Keep-Alive] Ping failed:', err.message);
+    }
+  }, 10 * 60 * 1000); // Every 10 minutes
 });

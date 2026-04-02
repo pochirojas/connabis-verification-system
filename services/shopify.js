@@ -170,6 +170,54 @@ async function getNextVerifiedNumber() {
 
 // ─── Public API ──────────────────────────────────────────────────
 
+// Check if a customer is already verified (has the 'Verified' tag)
+export async function isCustomerAlreadyVerified(customerId) {
+  console.log('[Shopify] Checking if customer', customerId, 'is already verified...');
+  try {
+    const { customer } = await shopifyAdminFetch(`/customers/${customerId}.json`);
+    const tags = (customer?.tags || '').split(',').map(t => t.trim().toLowerCase());
+    const verified = tags.includes('verified');
+    console.log('[Shopify] Customer', customerId, 'verified status:', verified, '| Tags:', customer?.tags);
+    return verified;
+  } catch (error) {
+    console.error('[Shopify] Failed to check verification status:', error.message);
+    // If we can't check, return false to allow the verification to proceed
+    return false;
+  }
+}
+
+// Check if a customer is already verified by email
+export async function isEmailAlreadyVerified(email) {
+  console.log('[Shopify] Checking if email', email, 'is already verified...');
+  try {
+    const data = await shopifyGraphQL(`{
+      customers(first: 5, query: "email:${email}") {
+        edges {
+          node {
+            id
+            email
+            tags
+          }
+        }
+      }
+    }`);
+
+    for (const edge of (data?.customers?.edges || [])) {
+      const tags = (edge.node.tags || []).map(t => t.toLowerCase());
+      if (tags.includes('verified')) {
+        console.log('[Shopify] Email', email, 'already has a verified account:', edge.node.id);
+        return true;
+      }
+    }
+
+    console.log('[Shopify] Email', email, 'has no verified accounts');
+    return false;
+  } catch (error) {
+    console.error('[Shopify] Failed to check email verification status:', error.message);
+    return false;
+  }
+}
+
 // Search for a Shopify customer by email — returns the customer ID or null
 export async function searchCustomerByEmail(email) {
   console.log('[Shopify] Searching for customer by email:', email);

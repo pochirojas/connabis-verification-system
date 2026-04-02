@@ -3,6 +3,7 @@ import express from 'express';
 import { verifyShopifyHmac } from '../utils/verifyShopify.js';
 import { createSumaVerification } from '../services/suma.js';
 import { sendVerificationEmail } from '../services/email.js';
+import { isCustomerAlreadyVerified, isEmailAlreadyVerified } from '../services/shopify.js';
 
 const router = express.Router();
 
@@ -36,6 +37,25 @@ router.post('/customer-created', async (req, res) => {
 
   // Process verification asynchronously after responding
   try {
+    // Step 0: Check if customer is already verified (duplicate check)
+    console.log('[Flow] Step 0: Checking for duplicate verification...');
+
+    // Check by customer ID first (exact match)
+    const alreadyVerifiedById = await isCustomerAlreadyVerified(id);
+    if (alreadyVerifiedById) {
+      console.log('[Flow] ⏭️ Customer', id, 'is already verified — skipping verification flow');
+      return;
+    }
+
+    // Also check by email (catches re-registrations with same email)
+    const alreadyVerifiedByEmail = await isEmailAlreadyVerified(email);
+    if (alreadyVerifiedByEmail) {
+      console.log('[Flow] ⏭️ Email', email, 'already has a verified account — skipping verification flow');
+      return;
+    }
+
+    console.log('[Flow] ✓ No duplicate found, proceeding with verification');
+
     // Step 1: Create SUMA verification session
     console.log('[Flow] Step 1: Creating SUMA verification session...');
     const verification = await createSumaVerification({
@@ -47,23 +67,38 @@ router.post('/customer-created', async (req, res) => {
     console.log('[Flow] SUMA session created:', verification.id);
     console.log('[Flow] Verification URL:', verification.verification_url);
 
-    // Step 2: Send verification email to customer
+    // Step 2: Send verification email to customer (with retry)
     console.log('[Flow] Step 2: Sending verification email...');
-    await sendVerificationEmail({
-      to: email,
-      link: verification.verification_url
-    });
-    console.log('[Flow] Verification email sent to:', email);
+    await sendWithRetry(email, verification.verification_url);
 
     console.log('[Flow] ✅ Complete — customer', id, 'verification flow initiated successfully');
 
   } catch (error) {
     console.error('[Flow] ❌ Customer verification flow failed:', error.message);
     console.error('[Flow] Stack:', error.stack);
-    // Note: We already sent 200 to Shopify. Log the error for debugging.
-    // Consider adding alerting here (e.g., send error notification to admin email)
   }
 });
+
+// Send email with retry logic (up to 3 attempts with exponential backoff)
+async function sendWithRetry(email, verificationUrl, maxRetries = 3) {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      await sendVerificationEmail({ to: email, link: verificationUrl });
+      console.log(`[Flow] Verification email sent to: ${email} (attempt ${attempt})`);
+      return;
+    } catch (error) {
+      console.error(`[Flow] Email send attempt ${attempt} failed:`, error.message);
+      if (attempt < maxRetries) {
+        const delay = attempt * 2000; // 2s, 4s backoff
+        console.log(`[Flow] Retrying in ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      } else {
+        console.error(`[Flow] ❌ All ${maxRetries} email attempts failed for ${email}`);
+        throw error;
+      }
+    }
+  }
+}
 
 // Webhook: Order creation (future use — can verify before fulfilling orders)
 router.post('/order-created', async (req, res) => {
