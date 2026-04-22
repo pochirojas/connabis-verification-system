@@ -33,6 +33,27 @@ app.get('/health', (req, res) => {
   });
 });
 
+// Debug endpoint: runs full verification flow and streams logs back
+app.get('/test/flow', async (req, res) => {
+  const logs = [];
+  const log = (msg) => { logs.push(msg); console.log('[TestFlow]', msg); };
+  try {
+    const { startVerificationFlow } = await import('./routes/shopify.js');
+    log('Starting verification flow for srojasbon@gmail.com...');
+    await startVerificationFlow({
+      id: '8455601750093',
+      email: 'srojasbon@gmail.com',
+      first_name: 'Test',
+      last_name: 'User'
+    });
+    log('Flow completed successfully');
+    res.status(200).json({ success: true, logs });
+  } catch (err) {
+    log('FAILED: ' + err.message);
+    res.status(500).json({ success: false, error: err.message, logs });
+  }
+});
+
 // Test endpoint for email functionality
 app.get('/test/email', async (req, res) => {
   try {
