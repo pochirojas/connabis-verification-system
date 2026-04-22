@@ -107,166 +107,316 @@ function formPage({ cid, email, customer }) {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Completa tu Perfil - Connabis</title>
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: #f5f5f5; min-height: 100vh;
-      display: flex; align-items: flex-start; justify-content: center;
-      padding: 40px 16px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+      background: #f7f7f7;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
     }
+
+    /* Top bar matching store */
+    .topbar {
+      width: 100%;
+      background: #1a2235;
+      padding: 10px 20px;
+      text-align: center;
+      font-size: 13px;
+      color: rgba(255,255,255,0.85);
+      letter-spacing: 0.2px;
+    }
+
+    /* Logo header */
+    .site-header {
+      width: 100%;
+      background: #fff;
+      border-bottom: 1px solid #e8e8e8;
+      padding: 18px 20px;
+      text-align: center;
+    }
+    .site-header img {
+      height: 60px;
+      width: auto;
+    }
+
+    /* Main content */
+    .page-wrap {
+      width: 100%;
+      max-width: 560px;
+      padding: 36px 16px 60px;
+    }
+
     .card {
-      background: #fff; border-radius: 12px; max-width: 520px; width: 100%;
-      box-shadow: 0 4px 24px rgba(0,0,0,0.08); overflow: hidden;
+      background: #fff;
+      border-radius: 4px;
+      border: 1px solid #e0e0e0;
+      overflow: hidden;
     }
-    .header {
-      background: #2d6a4f; padding: 28px 32px; text-align: center;
+
+    .card-header {
+      background: #2d6a4f;
+      padding: 24px 32px;
+      text-align: center;
     }
-    .header h1 { color: #fff; font-size: 24px; font-weight: 700; }
-    .header p { color: rgba(255,255,255,0.85); margin-top: 6px; font-size: 14px; }
-    .body { padding: 32px; }
-    .greeting { color: #1a1a1a; font-size: 18px; font-weight: 600; margin-bottom: 8px; }
-    .subtitle { color: #555; font-size: 14px; line-height: 1.6; margin-bottom: 28px; }
-    .field { margin-bottom: 20px; }
-    label { display: block; font-size: 13px; font-weight: 600; color: #333; margin-bottom: 6px; }
-    label .req { color: #c0392b; margin-left: 2px; }
-    input, select {
-      width: 100%; padding: 11px 14px; border: 1px solid #ddd; border-radius: 6px;
-      font-size: 15px; color: #1a1a1a; background: #fff;
-      transition: border-color 0.15s;
+    .card-header h1 {
+      color: #fff;
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+    }
+    .card-header p {
+      color: rgba(255,255,255,0.8);
+      font-size: 13px;
+      margin-top: 5px;
+    }
+
+    .card-body { padding: 32px; }
+
+    .greeting {
+      font-size: 17px;
+      font-weight: 600;
+      color: #111;
+      margin-bottom: 6px;
+    }
+    .subtitle {
+      font-size: 14px;
+      color: #666;
+      line-height: 1.65;
+      margin-bottom: 28px;
+      padding-bottom: 24px;
+      border-bottom: 1px solid #f0f0f0;
+    }
+
+    .field { margin-bottom: 18px; }
+
+    label {
+      display: block;
+      font-size: 12px;
+      font-weight: 700;
+      color: #444;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 7px;
+    }
+    .req { color: #c0392b; margin-left: 1px; }
+    .opt { color: #aaa; font-weight: 400; text-transform: none; font-size: 11px; letter-spacing: 0; }
+
+    input[type="text"],
+    input[type="tel"],
+    select {
+      width: 100%;
+      padding: 12px 14px;
+      border: 1px solid #d5d5d5;
+      border-radius: 4px;
+      font-size: 15px;
+      color: #111;
+      background: #fff;
       -webkit-appearance: none;
+      appearance: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+      line-height: 1.4;
     }
-    input:focus, select:focus { outline: none; border-color: #2d6a4f; }
-    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-    .hint { font-size: 12px; color: #888; margin-top: 4px; }
-    button {
-      width: 100%; background: #2d6a4f; color: #fff; border: none;
-      padding: 14px; border-radius: 6px; font-size: 16px; font-weight: 600;
-      cursor: pointer; margin-top: 8px; transition: background 0.2s;
+    input[type="text"]:focus,
+    input[type="tel"]:focus,
+    select:focus {
+      outline: none;
+      border-color: #2d6a4f;
+      box-shadow: 0 0 0 3px rgba(45,106,79,0.1);
     }
-    button:hover { background: #1b4332; }
-    .privacy { text-align: center; font-size: 12px; color: #999; margin-top: 16px; line-height: 1.5; }
+
+    /* Custom select arrow */
+    .select-wrap { position: relative; }
+    .select-wrap::after {
+      content: '';
+      position: absolute;
+      right: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 0; height: 0;
+      border-left: 5px solid transparent;
+      border-right: 5px solid transparent;
+      border-top: 6px solid #888;
+      pointer-events: none;
+    }
+
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    @media (max-width: 400px) { .row { grid-template-columns: 1fr; } }
+
+    .hint { font-size: 11px; color: #999; margin-top: 5px; }
+
+    .submit-btn {
+      width: 100%;
+      background: #2d6a4f;
+      color: #fff;
+      border: none;
+      padding: 15px;
+      border-radius: 4px;
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: 0.3px;
+      cursor: pointer;
+      margin-top: 10px;
+      transition: background 0.2s;
+    }
+    .submit-btn:hover { background: #1b4332; }
+    .submit-btn:active { background: #143326; }
+
+    .privacy {
+      text-align: center;
+      font-size: 12px;
+      color: #aaa;
+      margin-top: 20px;
+      line-height: 1.6;
+    }
+    .privacy a { color: #2d6a4f; text-decoration: none; }
   </style>
 </head>
 <body>
-  <div class="card">
-    <div class="header">
-      <h1>Connabis</h1>
-      <p>Completa tu perfil de membresía</p>
-    </div>
-    <div class="body">
-      <p class="greeting">Hola, ${name}</p>
-      <p class="subtitle">
-        Para activar tu cuenta necesitamos algunos datos adicionales.
-        Esta información es requerida por regulación para la compra de productos de cannabis.
-      </p>
 
-      <form method="POST" action="/profile/complete">
-        <input type="hidden" name="cid" value="${cid}">
-        <input type="hidden" name="email" value="${email}">
+  <div class="topbar">Connabis Colombia &mdash; Membresía Regulada</div>
 
-        <div class="row">
-          <div class="field">
-            <label>Tipo de Documento <span class="req">*</span></label>
-            <select name="id_type" required>
-              <option value="">Seleccionar</option>
-              <option value="CC">Cédula de Ciudadanía (CC)</option>
-              <option value="CE">Cédula de Extranjería (CE)</option>
-              <option value="PA">Pasaporte (PA)</option>
-              <option value="TI">Tarjeta de Identidad (TI)</option>
-            </select>
+  <header class="site-header">
+    <a href="https://connabis.com.co">
+      <img src="https://cdn.shopify.com/s/files/1/0581/4121/2749/files/Logo_Negro_sin_fondo.png"
+           alt="Connabis"
+           onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
+      <span style="display:none;font-size:22px;font-weight:800;color:#111;letter-spacing:-0.5px;">CO·NNABIS</span>
+    </a>
+  </header>
+
+  <div class="page-wrap">
+    <div class="card">
+      <div class="card-header">
+        <h1>Completa tu Perfil</h1>
+        <p>Requerido para activar tu membresía</p>
+      </div>
+      <div class="card-body">
+        <p class="greeting">Hola, ${name} 👋</p>
+        <p class="subtitle">
+          Registraste tu cuenta con Google. Para activarla necesitamos algunos
+          datos adicionales requeridos por regulación para la compra de productos de cannabis.
+        </p>
+
+        <form method="POST" action="/profile/complete" autocomplete="on">
+          <input type="hidden" name="cid" value="${cid}">
+          <input type="hidden" name="email" value="${email}">
+
+          <div class="row">
+            <div class="field">
+              <label>Tipo de Doc. <span class="req">*</span></label>
+              <div class="select-wrap">
+                <select name="id_type" required>
+                  <option value="">Seleccionar</option>
+                  <option value="CC">C.C. &mdash; Cédula Ciudadanía</option>
+                  <option value="CE">C.E. &mdash; Cédula Extranjería</option>
+                  <option value="PA">PA &mdash; Pasaporte</option>
+                  <option value="TI">T.I. &mdash; Tarjeta Identidad</option>
+                </select>
+              </div>
+            </div>
+            <div class="field">
+              <label>Número de Doc. <span class="req">*</span></label>
+              <input type="text" name="id_number"
+                     placeholder="Ej: 1005289529"
+                     required pattern="[0-9A-Za-z\-]+" minlength="5"
+                     inputmode="numeric">
+              <p class="hint">Sin puntos ni espacios</p>
+            </div>
           </div>
+
           <div class="field">
-            <label>Número de Documento <span class="req">*</span></label>
-            <input type="text" name="id_number" placeholder="Ej: 1005289529" required
-                   pattern="[0-9A-Za-z\-]+" minlength="5">
-            <p class="hint">Sin puntos ni espacios</p>
+            <label>Celular <span class="req">*</span></label>
+            <input type="tel" name="phone"
+                   placeholder="+57 300 123 4567"
+                   required autocomplete="tel">
           </div>
-        </div>
 
-        <div class="field">
-          <label>Celular <span class="req">*</span></label>
-          <input type="tel" name="phone" placeholder="+57 300 123 4567" required>
-        </div>
+          <div class="field">
+            <label>Dirección <span class="req">*</span></label>
+            <input type="text" name="address"
+                   placeholder="Calle 123 # 45-67, Barrio"
+                   required autocomplete="street-address">
+          </div>
 
-        <div class="field">
-          <label>Dirección <span class="req">*</span></label>
-          <input type="text" name="address" placeholder="Calle 123 # 45-67, Barrio" required>
-        </div>
+          <div class="field">
+            <label>Código Postal <span class="opt">(opcional)</span></label>
+            <input type="text" name="zip"
+                   placeholder="Ej: 680003"
+                   maxlength="10" inputmode="numeric">
+          </div>
 
-        <div class="field">
-          <label>Código Postal <span class="req" style="color:#999">(opcional)</span></label>
-          <input type="text" name="zip" placeholder="Ej: 680003" maxlength="10">
-        </div>
+          <button type="submit" class="submit-btn">Guardar y Continuar &rarr;</button>
+        </form>
 
-        <button type="submit">Guardar y Continuar →</button>
-      </form>
-
-      <p class="privacy">
-        Tus datos están protegidos y solo se usan para verificar tu membresía.<br>
-        Al continuar, confirmas que tienes 18 años o más.
-      </p>
+        <p class="privacy">
+          Tu información está protegida y solo se usa para verificar tu membresía.<br>
+          Al continuar confirmas que tienes 18 años o más.
+        </p>
+      </div>
     </div>
   </div>
+
 </body>
 </html>`;
 }
 
-function successPage(message) {
-  return `<!DOCTYPE html>
+const sharedShell = (content) => `<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>¡Listo! - Connabis</title>
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #f5f5f5;
-      display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; }
-    .card { background: #fff; border-radius: 12px; max-width: 480px; width: 100%;
-      padding: 48px 40px; text-align: center; box-shadow: 0 4px 24px rgba(0,0,0,0.08); }
-    .icon { font-size: 56px; margin-bottom: 16px; }
-    h2 { color: #2d6a4f; font-size: 22px; margin-bottom: 12px; }
-    p { color: #555; font-size: 15px; line-height: 1.6; margin-bottom: 28px; }
-    a { display: inline-block; background: #2d6a4f; color: #fff; padding: 13px 28px;
-      text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 15px; }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+      background: #f7f7f7; min-height: 100vh; display: flex; flex-direction: column; align-items: center; }
+    .topbar { width: 100%; background: #1a2235; padding: 10px 20px; text-align: center;
+      font-size: 13px; color: rgba(255,255,255,0.85); }
+    .site-header { width: 100%; background: #fff; border-bottom: 1px solid #e8e8e8;
+      padding: 18px 20px; text-align: center; }
+    .site-header img { height: 60px; width: auto; }
+    .page-wrap { width: 100%; max-width: 480px; padding: 48px 16px 60px;
+      display: flex; align-items: center; justify-content: center; flex: 1; }
+    .card { background: #fff; border: 1px solid #e0e0e0; border-radius: 4px;
+      width: 100%; padding: 48px 40px; text-align: center; }
+    @media (max-width: 480px) { .card { padding: 36px 24px; } }
   </style>
 </head>
 <body>
-  <div class="card">
-    <div class="icon">✅</div>
-    <h2>¡Todo listo!</h2>
-    <p>${message}</p>
-    <a href="https://connabis.com.co">Volver a Connabis</a>
-  </div>
-</body>
-</html>`;
+  <div class="topbar">Connabis Colombia &mdash; Membersía Regulada</div>
+  <header class="site-header">
+    <a href="https://connabis.com.co">
+      <img src="https://cdn.shopify.com/s/files/1/0581/4121/2749/files/Logo_Negro_sin_fondo.png" alt="Connabis"
+           onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
+      <span style="display:none;font-size:22px;font-weight:800;color:#111;">CO·NNABIS</span>
+    </a>
+  </header>
+  <div class="page-wrap"><div class="card">${content}</div></div>
+</body></html>`;
+
+function successPage(message) {
+  return sharedShell(`
+    <div style="font-size:52px;margin-bottom:16px;">✅</div>
+    <h2 style="color:#2d6a4f;font-size:22px;font-weight:700;margin-bottom:10px;">¡Todo listo!</h2>
+    <p style="color:#555;font-size:15px;line-height:1.65;margin-bottom:28px;">${message}</p>
+    <a href="https://connabis.com.co"
+       style="display:inline-block;background:#2d6a4f;color:#fff;padding:13px 28px;
+              text-decoration:none;border-radius:4px;font-weight:700;font-size:15px;">
+      Volver a Connabis
+    </a>`);
 }
 
 function errorPage(message) {
-  return `<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Error - Connabis</title>
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #f5f5f5;
-      display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; }
-    .card { background: #fff; border-radius: 12px; max-width: 480px; width: 100%;
-      padding: 48px 40px; text-align: center; box-shadow: 0 4px 24px rgba(0,0,0,0.08); }
-    .icon { font-size: 56px; margin-bottom: 16px; }
-    h2 { color: #c0392b; font-size: 22px; margin-bottom: 12px; }
-    p { color: #555; font-size: 15px; line-height: 1.6; margin-bottom: 28px; }
-    a { display: inline-block; background: #555; color: #fff; padding: 13px 28px;
-      text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 15px; }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <div class="icon">❌</div>
-    <h2>Algo salió mal</h2>
-    <p>${message}</p>
-    <a href="https://connabis.com.co">Volver a Connabis</a>
-  </div>
-</body>
-</html>`;
+  return sharedShell(`
+    <div style="font-size:52px;margin-bottom:16px;">❌</div>
+    <h2 style="color:#c0392b;font-size:22px;font-weight:700;margin-bottom:10px;">Algo salió mal</h2>
+    <p style="color:#555;font-size:15px;line-height:1.65;margin-bottom:28px;">${message}</p>
+    <a href="https://connabis.com.co"
+       style="display:inline-block;background:#555;color:#fff;padding:13px 28px;
+              text-decoration:none;border-radius:4px;font-weight:700;font-size:15px;">
+      Volver a Connabis
+    </a>`);
 }
 
 export default router;
