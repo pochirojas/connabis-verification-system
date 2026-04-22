@@ -11,7 +11,10 @@ import {
   isCustomerAlreadyVerified,
   isEmailAlreadyVerified,
   addTag,
-  isProfileComplete
+  isProfileComplete,
+  getCustomerMetafield,
+  setCustomerMetafield,
+  getCustomer
 } from '../services/shopify.js';
 import { logEvent } from '../services/logger.js';
 
@@ -56,13 +59,26 @@ router.post('/customer-created', async (req, res) => {
     const profileComplete = isProfileComplete({ phone, company });
 
     if (!profileComplete) {
-      // ── EXTERNAL CUSTOMER FLOW ──
+      // ── EXTERNAL CUSTOMER FLOW (Google/social login) ──
       console.log('[Flow] 🔶 Incomplete profile detected (external/Google login)');
       logEvent({ type: 'webhook', status: 'ok', detail: 'Incomplete profile — sending profile form', customerId: id, email });
 
       await addTag(id, 'Not Verified');
       const baseUrl = process.env.APP_BASE_URL || 'https://connabis-verification-system.onrender.com';
       const formUrl = `${baseUrl}/profile/complete?cid=${id}&email=${encodeURIComponent(email)}`;
+
+      // Pre-generate SUMA session NOW so verification email fires immediately after profile submit
+      let sumaUrl = null;
+      try {
+        const verification = await createSumaVerification({ customerId: id, email, firstName: first_name, lastName: last_name });
+        sumaUrl = verification.verification_url;
+        // Store the link in a metafield so profile route can retrieve it
+        await setCustomerMetafield(id, 'pending_verification_url', sumaUrl);
+        console.log('[Flow] Pre-generated SUMA session:', verification.id);
+      } catch (sumaErr) {
+        console.error('[Flow] SUMA pre-generation failed (non-critical):', sumaErr.message);
+        // Not fatal — profile route will generate a new session if metafield missing
+      }
 
       await sendWithRetry(async () => {
         await sendProfileCompleteEmail({ to: email, formUrl });
@@ -87,26 +103,74 @@ router.post('/customer-created', async (req, res) => {
 
 // ─── Shared verification flow (used for both normal and post-profile-complete) ──
 export async function startVerificationFlow({ id, email, first_name, last_name }) {
-  // Step 1: Create VeriDocID session
-  console.log('[Flow] Step 1: Creating VeriDocID session...');
-  const verification = await createSumaVerification({
-    customerId: id,
-    email,
-    firstName: first_name,
-    lastName: last_name
-  });
-  console.log('[Flow] Session created:', verification.id);
+  // Check if a SUMA session was pre-generated (Google/social login flow)
+  let verificationUrl = null;
+  try {
+    verificationUrl = await getCustomerMetafield(id, 'pending_verification_url');
+  } catch (_) {}
 
-  // Step 2: Send verification email
-  console.log('[Flow] Step 2: Sending verification email...');
+  if (verificationUrl) {
+    // Reuse the pre-generated link — instant send
+    console.log('[Flow] Using pre-generated SUMA session URL');
+    await setCustomerMetafield(id, 'pending_verification_url', ''); // clear it
+  } else {
+    // Step 1: Create a fresh VeriDocID session
+    console.log('[Flow] Step 1: Creating VeriDocID session...');
+    const verification = await createSumaVerification({ customerId: id, email, firstName: first_name, lastName: last_name });
+    verificationUrl = verification.verification_url;
+    console.log('[Flow] Session created:', verification.id);
+  }
+
+  // Step 2: Mark as sent so customers/update doesn't reprocess
+  await setCustomerMetafield(id, 'verification_sent', 'true').catch(() => {});
+
+  // Step 3: Send verification + consent email
+  console.log('[Flow] Sending verification email...');
   await sendWithRetry(async () => {
-    await sendVerificationEmail({ to: email, link: verification.verification_url });
+    await sendVerificationEmail({ to: email, link: verificationUrl });
   }, `verification email to ${email}`);
   logEvent({ type: 'email', status: 'ok', detail: 'Verification+consent email sent', customerId: id, email });
 
   console.log('[Flow] ✅ Verification flow complete for customer:', id);
   logEvent({ type: 'verification', status: 'ok', detail: 'Full verification flow complete', customerId: id, email });
 }
+
+// ─── Customer Update Webhook (catches Advanced Registration approvals) ──────
+router.post('/customer-updated', async (req, res) => {
+  if (!verifyShopifyHmac(req)) return res.status(401).send('Unauthorized');
+
+  const { id, email, first_name, last_name, phone, default_address } = req.body;
+  const company = req.body.company || default_address?.company;
+
+  res.status(200).send('ok'); // Respond immediately
+
+  if (!email || !id) return;
+
+  try {
+    // Only process if profile is complete (AR customers have all fields)
+    if (!isProfileComplete({ phone, company })) return;
+
+    // Skip if already verified
+    const [alreadyById, alreadyByEmail] = await Promise.all([
+      isCustomerAlreadyVerified(id),
+      isEmailAlreadyVerified(email)
+    ]);
+    if (alreadyById || alreadyByEmail) return;
+
+    // Skip if we already sent a verification email (prevent duplicate on every update)
+    const alreadySent = await getCustomerMetafield(id, 'verification_sent').catch(() => null);
+    if (alreadySent === 'true') return;
+
+    console.log('[CustomerUpdate] New complete-profile customer detected via update — starting flow:', email);
+    logEvent({ type: 'webhook', status: 'ok', detail: 'Customer update — triggering verification flow (Advanced Registration)', customerId: id, email });
+    await startVerificationFlow({ id, email, first_name, last_name });
+
+  } catch (error) {
+    console.error('[CustomerUpdate] Error:', error.message);
+    logEvent({ type: 'error', status: 'error', detail: `Customer update flow failed: ${error.message}`, customerId: id, email });
+    sendErrorAlertEmail({ context: 'Customer update webhook', error: error.message, customerId: id, email }).catch(() => {});
+  }
+});
 
 // ─── Retry helper ────────────────────────────────────────────────
 async function sendWithRetry(fn, label, maxRetries = 3) {
