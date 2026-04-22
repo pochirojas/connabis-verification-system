@@ -4,15 +4,13 @@ import { verifyShopifyHmac } from '../utils/verifyShopify.js';
 import { createSumaVerification } from '../services/suma.js';
 import {
   sendVerificationEmail,
-  sendConsentEmail,
   sendProfileCompleteEmail
 } from '../services/email.js';
 import {
   isCustomerAlreadyVerified,
   isEmailAlreadyVerified,
   addTag,
-  isProfileComplete,
-  setCustomerMetafield
+  isProfileComplete
 } from '../services/shopify.js';
 
 const router = express.Router();
@@ -103,17 +101,6 @@ export async function startVerificationFlow({ id, email, first_name, last_name }
   await sendWithRetry(async () => {
     await sendVerificationEmail({ to: email, link: verification.verification_url });
   }, `verification email to ${email}`);
-
-  // Step 3: Send consent email + mark consent_sent metafield
-  console.log('[Flow] Step 3: Sending consent email...');
-  try {
-    await sendConsentEmail({ to: email });
-    // Mark that consent email was sent (used in full-approval check)
-    await setCustomerMetafield(id, 'consent_sent', 'true');
-    console.log('[Flow] Consent email sent to:', email);
-  } catch (err) {
-    console.error('[Flow] Consent email failed (non-critical):', err.message);
-  }
 
   console.log('[Flow] ✅ Verification flow complete for customer:', id);
 }
