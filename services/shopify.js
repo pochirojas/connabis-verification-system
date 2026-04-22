@@ -177,14 +177,14 @@ async function getNextVerifiedNumber() {
 export async function isCustomerAlreadyVerified(customerId) {
   console.log('[Shopify] Checking if customer', customerId, 'is already verified...');
   try {
-    const { customer } = await shopifyAdminFetch(`/customers/${customerId}.json`);
-    const tags = (customer?.tags || '').split(',').map(t => t.trim().toLowerCase());
-    const verified = tags.includes('verified');
-    console.log('[Shopify] Customer', customerId, 'verified status:', verified, '| Tags:', customer?.tags);
+    // True verification = has the verified_number metafield (set by our system after SUMA scan)
+    // Do NOT rely on the Verified tag alone — Advanced Registration assigns it automatically
+    const verifiedNumber = await getCustomerMetafield(customerId, 'verified_number');
+    const verified = !!verifiedNumber;
+    console.log('[Shopify] Customer', customerId, 'verified_number metafield:', verifiedNumber, '| truly verified:', verified);
     return verified;
   } catch (error) {
     console.error('[Shopify] Failed to check verification status:', error.message);
-    // If we can't check, return false to allow the verification to proceed
     return false;
   }
 }
@@ -198,16 +198,19 @@ export async function isEmailAlreadyVerified(email) {
         edges {
           node {
             id
+            legacyResourceId
             email
-            tags
           }
         }
       }
     }`);
 
     for (const edge of (data?.customers?.edges || [])) {
-      const tags = (edge.node.tags || []).map(t => t.toLowerCase());
-      if (tags.includes('verified')) {
+      const cid = edge.node.legacyResourceId;
+      // True verification = has verified_number metafield set by our system
+      // Do NOT use the Verified tag — Advanced Registration assigns it automatically
+      const verifiedNumber = await getCustomerMetafield(cid, 'verified_number');
+      if (verifiedNumber) {
         console.log('[Shopify] Email', email, 'already has a verified account:', edge.node.id);
         return true;
       }
@@ -382,7 +385,8 @@ export async function addCustomerNote(customerId, noteText) {
 
 // Check if a customer profile is complete (has phone + company/ID)
 export function isProfileComplete(customer) {
-  return !!(customer?.phone && customer?.company);
+  const company = customer?.company || customer?.default_address?.company;
+  return !!(customer?.phone && company);
 }
 
 // Check if all 3 conditions for full approval are met:
