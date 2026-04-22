@@ -29,7 +29,8 @@ router.post('/customer-created', async (req, res) => {
     return res.status(401).send('Unauthorized');
   }
 
-  const { id, email, first_name, last_name, phone, company } = req.body;
+  const { id, email, first_name, last_name, phone } = req.body;
+  const company = req.body.company || req.body.default_address?.company;
   console.log('[Shopify] Customer ID:', id, '| Email:', email, '| Phone:', phone || 'MISSING');
 
   if (!email) {
@@ -145,6 +146,9 @@ router.post('/customer-updated', async (req, res) => {
   res.status(200).send('ok'); // Respond immediately
 
   if (!email || !id) return;
+
+  // Small delay so customers/create always processes first if both fire together
+  await new Promise(r => setTimeout(r, 3000));
 
   try {
     // Only process if profile is complete (AR customers have all fields)
