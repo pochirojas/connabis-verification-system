@@ -352,3 +352,30 @@ export async function sendConsentEmail({ to }) {
   console.log('[Email] Consent email accepted, ID:', data?.id);
   return data;
 }
+
+// Send error alert to admin when any flow fails
+export async function sendErrorAlertEmail({ context, error, customerId, email }) {
+  const from = getFromEmail();
+  const resend = getResendClient();
+  const { data, err } = await resend.emails.send({
+    from,
+    to: 'connabisco@gmail.com',
+    subject: `[ERROR] Connabis Verification System — ${context}`,
+    html: `
+      <div style="font-family:monospace;max-width:600px;margin:0 auto;padding:16px;">
+        <h2 style="color:#dc3545;border-bottom:2px solid #dc3545;padding-bottom:8px;">⚠️ SYSTEM ERROR</h2>
+        <table style="width:100%;border-collapse:collapse;font-size:14px;">
+          <tr><td style="padding:6px 8px;font-weight:bold;width:140px;">Context:</td><td style="padding:6px 8px;">${context}</td></tr>
+          <tr><td style="padding:6px 8px;font-weight:bold;">Error:</td><td style="padding:6px 8px;color:#dc3545;">${error}</td></tr>
+          ${customerId ? `<tr><td style="padding:6px 8px;font-weight:bold;">Customer ID:</td><td style="padding:6px 8px;">${customerId}</td></tr>` : ''}
+          ${email ? `<tr><td style="padding:6px 8px;font-weight:bold;">Email:</td><td style="padding:6px 8px;">${email}</td></tr>` : ''}
+          <tr><td style="padding:6px 8px;font-weight:bold;">Timestamp:</td><td style="padding:6px 8px;">${new Date().toISOString()}</td></tr>
+        </table>
+        <p style="margin-top:16px;font-size:13px;color:#666;">
+          Check <a href="https://connabis-verification-system.onrender.com/admin/status">admin dashboard</a> for full event log.
+        </p>
+      </div>`
+  });
+  if (err) console.error('[Email] Error alert failed to send:', JSON.stringify(err));
+  else console.log('[Email] Error alert sent, ID:', data?.id);
+}

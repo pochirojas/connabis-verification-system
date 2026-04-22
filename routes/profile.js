@@ -1,5 +1,6 @@
 // routes/profile.js — Profile completion form for external/Google login customers
 import express from 'express';
+import { logEvent } from '../services/logger.js';
 import {
   getCustomer,
   updateCustomerProfile,
@@ -85,11 +86,12 @@ router.post('/complete', express.urlencoded({ extended: true }), async (req, res
       console.error('[Profile] Verification flow failed after profile complete:', err.message);
     });
 
-    // Show success page immediately (don't wait for emails)
-    res.send(successPage(`¡Perfil completado! Te enviaremos dos correos: uno para verificar tu identidad y otro con el consentimiento de membresía.`));
+    logEvent({ type: 'profile', status: 'ok', detail: 'Profile completed — verification flow started', customerId: cid, email });
+    res.send(successPage(`¡Perfil completado! En un momento recibirás un correo con los pasos para verificar tu identidad y firmar tu consentimiento.`));
 
   } catch (err) {
     console.error('[Profile] Error updating customer:', err.message);
+    logEvent({ type: 'error', status: 'error', detail: `Profile form submission failed: ${err.message}`, customerId: cid, email });
     res.status(500).send(errorPage('Error al guardar tu información. Por favor intenta más tarde.'));
   }
 });

@@ -4,7 +4,8 @@ import { verifyShopifyHmac } from '../utils/verifyShopify.js';
 import { createSumaVerification } from '../services/suma.js';
 import {
   sendVerificationEmail,
-  sendProfileCompleteEmail
+  sendProfileCompleteEmail,
+  sendErrorAlertEmail
 } from '../services/email.js';
 import {
   isCustomerAlreadyVerified,
@@ -12,6 +13,7 @@ import {
   addTag,
   isProfileComplete
 } from '../services/shopify.js';
+import { logEvent } from '../services/logger.js';
 
 const router = express.Router();
 
@@ -36,6 +38,8 @@ router.post('/customer-created', async (req, res) => {
   res.status(200).send('ok');
 
   try {
+    logEvent({ type: 'webhook', status: 'ok', detail: 'Customer created webhook received', customerId: id, email });
+
     // ─── Step 0: Duplicate check ───────────────────────────────────
     const [alreadyById, alreadyByEmail] = await Promise.all([
       isCustomerAlreadyVerified(id),
@@ -44,32 +48,27 @@ router.post('/customer-created', async (req, res) => {
 
     if (alreadyById || alreadyByEmail) {
       console.log('[Flow] ⏭️ Already verified — skipping');
+      logEvent({ type: 'webhook', status: 'skipped', detail: 'Customer already verified — skipped', customerId: id, email });
       return;
     }
 
     // ─── Step 1: Detect if profile is complete ────────────────────
-    // Google/social login accounts skip the registration form,
-    // so they arrive without phone and company (ID number).
     const profileComplete = isProfileComplete({ phone, company });
 
     if (!profileComplete) {
       // ── EXTERNAL CUSTOMER FLOW ──
       console.log('[Flow] 🔶 Incomplete profile detected (external/Google login)');
+      logEvent({ type: 'webhook', status: 'ok', detail: 'Incomplete profile — sending profile form', customerId: id, email });
 
-      // Add "Not Verified" tag to block purchases
       await addTag(id, 'Not Verified');
-      console.log('[Flow] Not Verified tag added to customer:', id);
-
-      // Build profile completion form URL with customer ID embedded
-      // The form will use this to update the right Shopify customer
       const baseUrl = process.env.APP_BASE_URL || 'https://connabis-verification-system.onrender.com';
       const formUrl = `${baseUrl}/profile/complete?cid=${id}&email=${encodeURIComponent(email)}`;
 
-      // Send profile completion email
       await sendWithRetry(async () => {
         await sendProfileCompleteEmail({ to: email, formUrl });
       }, `profile email to ${email}`);
 
+      logEvent({ type: 'email', status: 'ok', detail: 'Profile completion email sent', customerId: id, email });
       console.log('[Flow] ✅ External customer handled — profile form sent to:', email);
       return;
     }
@@ -81,6 +80,8 @@ router.post('/customer-created', async (req, res) => {
   } catch (error) {
     console.error('[Flow] ❌ Error:', error.message);
     console.error(error.stack);
+    logEvent({ type: 'error', status: 'error', detail: `Webhook flow failed: ${error.message}`, customerId: id, email });
+    sendErrorAlertEmail({ context: 'Shopify webhook flow', error: error.message, customerId: id, email }).catch(() => {});
   }
 });
 
@@ -101,8 +102,10 @@ export async function startVerificationFlow({ id, email, first_name, last_name }
   await sendWithRetry(async () => {
     await sendVerificationEmail({ to: email, link: verification.verification_url });
   }, `verification email to ${email}`);
+  logEvent({ type: 'email', status: 'ok', detail: 'Verification+consent email sent', customerId: id, email });
 
   console.log('[Flow] ✅ Verification flow complete for customer:', id);
+  logEvent({ type: 'verification', status: 'ok', detail: 'Full verification flow complete', customerId: id, email });
 }
 
 // ─── Retry helper ────────────────────────────────────────────────

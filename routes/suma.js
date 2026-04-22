@@ -1,8 +1,9 @@
 // routes/suma.js — VeriDocID Webhook & Callback Handlers
 import express from 'express';
-import { sendVerificationResultEmail, sendDebugAdminEmail } from '../services/email.js';
+import { sendVerificationResultEmail, sendDebugAdminEmail, sendErrorAlertEmail } from '../services/email.js';
 import { markCustomerVerified, searchCustomerByEmail } from '../services/shopify.js';
 import { checkVerificationStatus, getVerificationResults } from '../services/suma.js';
+import { logEvent } from '../services/logger.js';
 
 const router = express.Router();
 
@@ -120,6 +121,7 @@ router.post('/webhook', express.json(), async (req, res) => {
 
   try {
     const payload = req.body;
+    logEvent({ type: 'verification', status: 'ok', detail: 'VeriDocID webhook received', extra: { keys: Object.keys(payload) } });
 
     // VeriDocID payloads can vary — extract what we can
     // The "id" field we set during createVerification is "shopify_<customerId>"
@@ -185,13 +187,18 @@ router.post('/webhook', express.json(), async (req, res) => {
         const result = await markCustomerVerified(customerId);
         verifiedNumber = result.verifiedNumber;
         console.log('[VeriDocID Webhook] Customer marked as verified, number:', verifiedNumber);
+        logEvent({ type: 'verification', status: 'ok', detail: `Customer verified — number ${verifiedNumber}`, customerId, email });
       } catch (shopifyError) {
         console.error('[VeriDocID Webhook] Shopify update failed (non-critical):', shopifyError.message);
+        logEvent({ type: 'error', status: 'error', detail: `Shopify update failed after verification: ${shopifyError.message}`, customerId, email });
+        sendErrorAlertEmail({ context: 'Shopify markCustomerVerified', error: shopifyError.message, customerId, email }).catch(() => {});
       }
     } else if (customerId && !isVerified) {
       console.log('[VeriDocID Webhook] Customer', customerId, 'failed verification — no tag/number assigned');
+      logEvent({ type: 'verification', status: 'warn', detail: 'Customer failed verification', customerId, email });
     } else {
       console.log('[VeriDocID Webhook] No customer ID found in payload — admin notified only');
+      logEvent({ type: 'verification', status: 'warn', detail: 'No customer ID in VeriDocID payload', email });
     }
 
     // Step 2: Send legacy admin notification
@@ -229,6 +236,8 @@ router.post('/webhook', express.json(), async (req, res) => {
   } catch (error) {
     console.error('[VeriDocID Webhook] Error processing:', error.message);
     console.error('[VeriDocID Webhook] Stack:', error.stack);
+    logEvent({ type: 'error', status: 'error', detail: `VeriDocID webhook processing failed: ${error.message}` });
+    sendErrorAlertEmail({ context: 'VeriDocID webhook', error: error.message }).catch(() => {});
   }
 });
 

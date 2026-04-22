@@ -9,7 +9,9 @@ import { fileURLToPath } from 'url';
 import shopifyRoutes from './routes/shopify.js';
 import sumaRoutes from './routes/suma.js';
 import profileRoutes from './routes/profile.js';
+import adminRoutes from './routes/admin.js';
 import { sendTestEmail } from './services/email.js';
+import { logEvent } from './services/logger.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -70,6 +72,7 @@ app.get('/test/email', async (req, res) => {
 app.use('/webhooks/shopify', shopifyRoutes);
 app.use('/suma', sumaRoutes);
 app.use('/profile', profileRoutes);
+app.use('/admin', adminRoutes);
 
 // Catch-all for unknown routes
 app.use('*', (req, res) => {
@@ -82,6 +85,7 @@ app.use('*', (req, res) => {
 // Global error handler
 app.use((err, req, res, next) => {
   console.error('[Global Error]', err.message);
+  logEvent({ type: 'error', status: 'error', detail: `Unhandled error: ${err.message}` });
   res.status(500).json({ error: 'Internal server error' });
 });
 
