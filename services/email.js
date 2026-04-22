@@ -7,15 +7,26 @@ import { fileURLToPath } from 'url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_FROM = 'Connabis <no-reply@connabis.com.co>';
 
-// Load email template at startup
+// Load email templates at startup
 const VERIFICATION_TEMPLATE_PATH = join(__dirname, '..', 'templates', 'verification-email.html');
+const CONSENT_TEMPLATE_PATH = join(__dirname, '..', 'templates', 'consent-email.html');
+
 let verificationTemplate;
 try {
   verificationTemplate = readFileSync(VERIFICATION_TEMPLATE_PATH, 'utf-8');
-  console.log('[Email] Verification template loaded from:', VERIFICATION_TEMPLATE_PATH);
+  console.log('[Email] Verification template loaded');
 } catch (err) {
-  console.warn('[Email] Template not found, using inline fallback:', err.message);
+  console.warn('[Email] Verification template not found, using inline fallback:', err.message);
   verificationTemplate = null;
+}
+
+let consentTemplate;
+try {
+  consentTemplate = readFileSync(CONSENT_TEMPLATE_PATH, 'utf-8');
+  console.log('[Email] Consent template loaded');
+} catch (err) {
+  console.warn('[Email] Consent template not found:', err.message);
+  consentTemplate = null;
 }
 
 function getResendClient() {
@@ -239,5 +250,50 @@ export async function sendVerificationResultEmail({ customerId, email, status, r
   }
 
   console.log('[Email] Admin notification accepted, ID:', data?.id);
+  return data;
+}
+
+// Send Adobe Sign consent form link to customer
+export async function sendConsentEmail({ to }) {
+  const from = getFromEmail();
+  console.log('[Email] Sending consent email to:', to, '| From:', from);
+  const resend = getResendClient();
+
+  const html = consentTemplate || `
+    <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
+      <div style="background:#2d6a4f;padding:30px;text-align:center;">
+        <h1 style="color:#fff;margin:0;font-size:28px;">Connabis</h1>
+      </div>
+      <div style="padding:32px 30px;">
+        <h2 style="color:#1a1a1a;">¡Un paso más para completar tu registro!</h2>
+        <p style="color:#333;font-size:15px;line-height:1.7;">Te enviamos el consentimiento de membresía. Por favor fírmalo haciendo clic en el botón a continuación.</p>
+        <p style="text-align:center;margin:32px 0;">
+          <a href="https://na1.documents.adobe.com/public/esignWidget?wid=CBFCIBAA3AAABLblqZhC7Nt3udkeVJ5XDwPrQui78jw5yKj4I7VMwfuZEwGbyv_H028FmwdqpCtzaxw2B7do*"
+             style="background-color:#2d6a4f;color:#fff;padding:14px 32px;text-decoration:none;border-radius:6px;display:inline-block;font-size:16px;font-weight:bold;">
+            Firmar Consentimiento
+          </a>
+        </p>
+      </div>
+      <div style="padding:0 30px 32px;">
+        <p style="color:#888;font-size:13px;">Por favor no responda a este correo.</p>
+        <p style="color:#666;font-size:14px;">Te deseamos un día Connábico,</p>
+        <p style="color:#666;font-size:14px;font-weight:600;">El equipo de Connabis Colombia</p>
+      </div>
+    </div>
+  `;
+
+  const { data, error } = await resend.emails.send({
+    from,
+    to,
+    subject: 'Firma tu Consentimiento de Membresía - Connabis',
+    html
+  });
+
+  if (error) {
+    console.error('[Email] Resend API error (consent):', JSON.stringify(error));
+    throw new Error(`Resend consent email failed: ${error.message}`);
+  }
+
+  console.log('[Email] Consent email accepted, ID:', data?.id);
   return data;
 }

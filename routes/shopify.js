@@ -2,7 +2,7 @@
 import express from 'express';
 import { verifyShopifyHmac } from '../utils/verifyShopify.js';
 import { createSumaVerification } from '../services/suma.js';
-import { sendVerificationEmail } from '../services/email.js';
+import { sendVerificationEmail, sendConsentEmail } from '../services/email.js';
 import { isCustomerAlreadyVerified, isEmailAlreadyVerified } from '../services/shopify.js';
 
 const router = express.Router();
@@ -70,6 +70,16 @@ router.post('/customer-created', async (req, res) => {
     // Step 2: Send verification email to customer (with retry)
     console.log('[Flow] Step 2: Sending verification email...');
     await sendWithRetry(email, verification.verification_url);
+
+    // Step 3: Send consent form email (Adobe Sign widget link)
+    console.log('[Flow] Step 3: Sending consent email...');
+    try {
+      await sendConsentEmail({ to: email });
+      console.log('[Flow] Consent email sent to:', email);
+    } catch (consentErr) {
+      // Log but don't fail the whole flow if consent email fails
+      console.error('[Flow] Consent email failed (non-critical):', consentErr.message);
+    }
 
     console.log('[Flow] ✅ Complete — customer', id, 'verification flow initiated successfully');
 
