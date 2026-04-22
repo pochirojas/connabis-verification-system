@@ -253,6 +253,61 @@ export async function sendVerificationResultEmail({ customerId, email, status, r
   return data;
 }
 
+// Send 'complete your profile' email to external/Google login customers
+export async function sendProfileCompleteEmail({ to, formUrl }) {
+  const from = getFromEmail();
+  console.log('[Email] Sending profile completion email to:', to);
+  const resend = getResendClient();
+
+  const { data, error } = await resend.emails.send({
+    from,
+    to,
+    subject: 'Completa tu Perfil para Continuar - Connabis',
+    html: `
+      <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#fff;">
+        <div style="background:#2d6a4f;padding:30px;text-align:center;">
+          <h1 style="color:#fff;margin:0;font-size:28px;">Connabis</h1>
+        </div>
+        <div style="padding:32px 30px;">
+          <h2 style="color:#1a1a1a;margin:0 0 16px;">Completa tu Perfil</h2>
+          <p style="color:#333;font-size:15px;line-height:1.7;margin:0 0 12px;">
+            Notamos que tu cuenta fue creada con Google y necesitamos algunos datos adicionales
+            para completar tu registro como miembro de Connabis.
+          </p>
+          <p style="color:#333;font-size:15px;line-height:1.7;margin:0 0 28px;">
+            El proceso toma menos de 2 minutos. Una vez completado, recibirás
+            los pasos para verificar tu identidad y firmar tu consentimiento.
+          </p>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+            <tr>
+              <td align="center" style="padding:0 0 32px;">
+                <a href="${formUrl}"
+                   style="background:#2d6a4f;color:#fff;padding:14px 32px;
+                          text-decoration:none;border-radius:6px;display:inline-block;
+                          font-size:16px;font-weight:bold;">
+                  Completar mi Perfil
+                </a>
+              </td>
+            </tr>
+          </table>
+          <p style="color:#888;font-size:13px;margin:0;">Por favor no responda a este correo.</p>
+        </div>
+        <div style="padding:0 30px 32px;">
+          <p style="color:#666;font-size:14px;margin:0 0 4px;">Te deseamos un día Connábico,</p>
+          <p style="color:#666;font-size:14px;font-weight:600;margin:0;">El equipo de Connabis Colombia</p>
+        </div>
+      </div>
+    `
+  });
+
+  if (error) {
+    console.error('[Email] Resend API error (profile):', JSON.stringify(error));
+    throw new Error(`Resend profile email failed: ${error.message}`);
+  }
+  console.log('[Email] Profile completion email accepted, ID:', data?.id);
+  return data;
+}
+
 // Send Adobe Sign consent form link to customer
 export async function sendConsentEmail({ to }) {
   const from = getFromEmail();

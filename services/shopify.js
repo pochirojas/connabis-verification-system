@@ -12,8 +12,11 @@ import fetch from 'node-fetch';
 
 // ─── Configuration ───────────────────────────────────────────────
 const VERIFIED_TAG = 'Verified';
+const NOT_VERIFIED_TAG = 'Not Verified';
 const METAFIELD_NAMESPACE = 'custom';
 const METAFIELD_KEY = 'verified_number';
+const METAFIELD_PROFILE_COMPLETE = 'profile_complete';   // 'true' once form submitted
+const METAFIELD_CONSENT_SENT = 'consent_sent';           // 'true' once consent email sent
 // If no verified customers exist yet, the first number assigned will be this:
 const STARTING_NUMBER = 300;
 
@@ -296,6 +299,111 @@ export async function setVerifiedNumber(customerId, verifiedNumber) {
   return data;
 }
 
+// Add a tag to a customer (without removing existing tags)
+export async function addTag(customerId, tag) {
+  const { customer } = await shopifyAdminFetch(`/customers/${customerId}.json`);
+  const current = (customer?.tags || '').split(',').map(t => t.trim()).filter(Boolean);
+  if (current.some(t => t.toLowerCase() === tag.toLowerCase())) return; // already has it
+  const newTags = [...current, tag].join(', ');
+  await shopifyAdminFetch(`/customers/${customerId}.json`, {
+    method: 'PUT',
+    body: JSON.stringify({ customer: { id: customerId, tags: newTags } }),
+  });
+  console.log(`[Shopify] Tag '${tag}' added to customer ${customerId}`);
+}
+
+// Remove a specific tag from a customer
+export async function removeTag(customerId, tag) {
+  const { customer } = await shopifyAdminFetch(`/customers/${customerId}.json`);
+  const current = (customer?.tags || '').split(',').map(t => t.trim()).filter(Boolean);
+  const filtered = current.filter(t => t.toLowerCase() !== tag.toLowerCase());
+  if (filtered.length === current.length) return; // tag wasn't there
+  await shopifyAdminFetch(`/customers/${customerId}.json`, {
+    method: 'PUT',
+    body: JSON.stringify({ customer: { id: customerId, tags: filtered.join(', ') } }),
+  });
+  console.log(`[Shopify] Tag '${tag}' removed from customer ${customerId}`);
+}
+
+// Get a single customer's full data (tags, phone, company, metafields)
+export async function getCustomer(customerId) {
+  const { customer } = await shopifyAdminFetch(`/customers/${customerId}.json`);
+  return customer;
+}
+
+// Update customer profile fields (phone, company=ID, address etc.)
+export async function updateCustomerProfile(customerId, fields) {
+  console.log('[Shopify] Updating profile for customer:', customerId);
+  const data = await shopifyAdminFetch(`/customers/${customerId}.json`, {
+    method: 'PUT',
+    body: JSON.stringify({ customer: { id: customerId, ...fields } }),
+  });
+  console.log('[Shopify] Profile updated');
+  return data.customer;
+}
+
+// Set a metafield on a customer
+export async function setCustomerMetafield(customerId, key, value) {
+  return shopifyAdminFetch(`/customers/${customerId}/metafields.json`, {
+    method: 'POST',
+    body: JSON.stringify({
+      metafield: {
+        namespace: METAFIELD_NAMESPACE,
+        key,
+        value: String(value),
+        type: 'single_line_text_field',
+      },
+    }),
+  });
+}
+
+// Get a specific metafield value for a customer
+export async function getCustomerMetafield(customerId, key) {
+  try {
+    const data = await shopifyAdminFetch(
+      `/customers/${customerId}/metafields.json?namespace=${METAFIELD_NAMESPACE}&key=${key}`
+    );
+    return data?.metafields?.[0]?.value || null;
+  } catch { return null; }
+}
+
+// Add a note to a customer (appends, doesn't overwrite existing note)
+export async function addCustomerNote(customerId, noteText) {
+  console.log('[Shopify] Adding note to customer:', customerId);
+  const { customer } = await shopifyAdminFetch(`/customers/${customerId}.json`);
+  const existing = customer?.note || '';
+  const newNote = existing ? `${existing}\n${noteText}` : noteText;
+  await shopifyAdminFetch(`/customers/${customerId}.json`, {
+    method: 'PUT',
+    body: JSON.stringify({ customer: { id: customerId, note: newNote } }),
+  });
+  console.log('[Shopify] Note added');
+}
+
+// Check if a customer profile is complete (has phone + company/ID)
+export function isProfileComplete(customer) {
+  return !!(customer?.phone && customer?.company);
+}
+
+// Check if all 3 conditions for full approval are met:
+// 1. Has 'Verified' tag (VeriDoc passed)
+// 2. Profile complete (phone + company)
+// 3. Consent sent (we sent the Adobe link — best proxy without Adobe API)
+export async function checkFullApproval(customerId) {
+  try {
+    const customer = await getCustomer(customerId);
+    const tags = (customer?.tags || '').split(',').map(t => t.trim().toLowerCase());
+    const hasVerified = tags.includes('verified');
+    const profileComplete = isProfileComplete(customer);
+    // Check metafield for consent sent
+    const consentSent = await getCustomerMetafield(customerId, METAFIELD_CONSENT_SENT);
+    return { hasVerified, profileComplete, consentSent: consentSent === 'true', customer };
+  } catch (err) {
+    console.error('[Shopify] checkFullApproval error:', err.message);
+    return { hasVerified: false, profileComplete: false, consentSent: false, customer: null };
+  }
+}
+
 // Main entry point: Mark a customer as verified
 // 1. Query Shopify for the next sequential verified number
 // 2. Add "Verified" tag
@@ -327,6 +435,25 @@ export async function markCustomerVerified(customerId) {
     await setVerifiedNumber(customerId, verifiedNumber);
   } catch (error) {
     console.error('[Shopify] Failed to set verified number:', error.message);
+  }
+
+  // Step 4: Add verification note to customer profile
+  // Format: "CC 1005289529 - Verified Number: 300 - Verified Automatically by Motas"
+  // We pull the company field (which stores the ID number) for the note
+  try {
+    const customer = await getCustomer(customerId);
+    const idNumber = customer?.company || 'N/A';
+    const noteText = `${idNumber} - Verified Number: ${verifiedNumber} - Verified Automatically by Motas`;
+    await addCustomerNote(customerId, noteText);
+  } catch (error) {
+    console.error('[Shopify] Failed to add verification note:', error.message);
+  }
+
+  // Step 5: Remove 'Not Verified' tag if present
+  try {
+    await removeTag(customerId, NOT_VERIFIED_TAG);
+  } catch (error) {
+    console.error('[Shopify] Failed to remove Not Verified tag:', error.message);
   }
 
   return { verifiedNumber, customerId };

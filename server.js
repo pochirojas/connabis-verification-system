@@ -8,6 +8,7 @@ import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import shopifyRoutes from './routes/shopify.js';
 import sumaRoutes from './routes/suma.js';
+import profileRoutes from './routes/profile.js';
 import { sendTestEmail } from './services/email.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -47,6 +48,7 @@ app.get('/test/email', async (req, res) => {
 // Mount route handlers
 app.use('/webhooks/shopify', shopifyRoutes);
 app.use('/suma', sumaRoutes);
+app.use('/profile', profileRoutes);
 
 // Catch-all for unknown routes
 app.use('*', (req, res) => {

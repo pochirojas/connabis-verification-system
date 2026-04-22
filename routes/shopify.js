@@ -2,127 +2,137 @@
 import express from 'express';
 import { verifyShopifyHmac } from '../utils/verifyShopify.js';
 import { createSumaVerification } from '../services/suma.js';
-import { sendVerificationEmail, sendConsentEmail } from '../services/email.js';
-import { isCustomerAlreadyVerified, isEmailAlreadyVerified } from '../services/shopify.js';
+import {
+  sendVerificationEmail,
+  sendConsentEmail,
+  sendProfileCompleteEmail
+} from '../services/email.js';
+import {
+  isCustomerAlreadyVerified,
+  isEmailAlreadyVerified,
+  addTag,
+  isProfileComplete,
+  setCustomerMetafield
+} from '../services/shopify.js';
 
 const router = express.Router();
 
 // Webhook: Customer account creation
-// Triggered when a new customer registers on connabis.com.co
 router.post('/customer-created', async (req, res) => {
   console.log('[Shopify] Customer created webhook received');
 
-  // IMPORTANT: Respond quickly to avoid Shopify timeout (5 seconds)
-  // Shopify retries webhooks that don't get 200 within 5s
-
-  // Verify webhook authenticity
   if (!verifyShopifyHmac(req)) {
-    console.error('[Shopify] Invalid HMAC signature — rejecting webhook');
+    console.error('[Shopify] Invalid HMAC — rejecting');
     return res.status(401).send('Unauthorized');
   }
 
-  const customer = req.body;
-  const { id, email, first_name, last_name } = customer;
+  const { id, email, first_name, last_name, phone, company } = req.body;
+  console.log('[Shopify] Customer ID:', id, '| Email:', email, '| Phone:', phone || 'MISSING');
 
-  console.log('[Shopify] Customer ID:', id, '| Email:', email);
-
-  // Validate we have the minimum required data
   if (!email) {
-    console.error('[Shopify] Customer has no email — cannot send verification');
-    return res.status(200).send('ok'); // Still return 200 to prevent Shopify retries
+    console.error('[Shopify] No email — cannot proceed');
+    return res.status(200).send('ok');
   }
 
-  // Respond to Shopify immediately (async processing continues)
+  // Respond to Shopify immediately — process async
   res.status(200).send('ok');
 
-  // Process verification asynchronously after responding
   try {
-    // Step 0: Check if customer is already verified (duplicate check)
-    console.log('[Flow] Step 0: Checking for duplicate verification...');
+    // ─── Step 0: Duplicate check ───────────────────────────────────
+    const [alreadyById, alreadyByEmail] = await Promise.all([
+      isCustomerAlreadyVerified(id),
+      isEmailAlreadyVerified(email)
+    ]);
 
-    // Check by customer ID first (exact match)
-    const alreadyVerifiedById = await isCustomerAlreadyVerified(id);
-    if (alreadyVerifiedById) {
-      console.log('[Flow] ⏭️ Customer', id, 'is already verified — skipping verification flow');
+    if (alreadyById || alreadyByEmail) {
+      console.log('[Flow] ⏭️ Already verified — skipping');
       return;
     }
 
-    // Also check by email (catches re-registrations with same email)
-    const alreadyVerifiedByEmail = await isEmailAlreadyVerified(email);
-    if (alreadyVerifiedByEmail) {
-      console.log('[Flow] ⏭️ Email', email, 'already has a verified account — skipping verification flow');
+    // ─── Step 1: Detect if profile is complete ────────────────────
+    // Google/social login accounts skip the registration form,
+    // so they arrive without phone and company (ID number).
+    const profileComplete = isProfileComplete({ phone, company });
+
+    if (!profileComplete) {
+      // ── EXTERNAL CUSTOMER FLOW ──
+      console.log('[Flow] 🔶 Incomplete profile detected (external/Google login)');
+
+      // Add "Not Verified" tag to block purchases
+      await addTag(id, 'Not Verified');
+      console.log('[Flow] Not Verified tag added to customer:', id);
+
+      // Build profile completion form URL with customer ID embedded
+      // The form will use this to update the right Shopify customer
+      const baseUrl = process.env.APP_BASE_URL || 'https://connabis-verification-system.onrender.com';
+      const formUrl = `${baseUrl}/profile/complete?cid=${id}&email=${encodeURIComponent(email)}`;
+
+      // Send profile completion email
+      await sendWithRetry(async () => {
+        await sendProfileCompleteEmail({ to: email, formUrl });
+      }, `profile email to ${email}`);
+
+      console.log('[Flow] ✅ External customer handled — profile form sent to:', email);
       return;
     }
 
-    console.log('[Flow] ✓ No duplicate found, proceeding with verification');
-
-    // Step 1: Create SUMA verification session
-    console.log('[Flow] Step 1: Creating SUMA verification session...');
-    const verification = await createSumaVerification({
-      customerId: id,
-      email: email,
-      firstName: first_name,
-      lastName: last_name
-    });
-    console.log('[Flow] SUMA session created:', verification.id);
-    console.log('[Flow] Verification URL:', verification.verification_url);
-
-    // Step 2: Send verification email to customer (with retry)
-    console.log('[Flow] Step 2: Sending verification email...');
-    await sendWithRetry(email, verification.verification_url);
-
-    // Step 3: Send consent form email (Adobe Sign widget link)
-    console.log('[Flow] Step 3: Sending consent email...');
-    try {
-      await sendConsentEmail({ to: email });
-      console.log('[Flow] Consent email sent to:', email);
-    } catch (consentErr) {
-      // Log but don't fail the whole flow if consent email fails
-      console.error('[Flow] Consent email failed (non-critical):', consentErr.message);
-    }
-
-    console.log('[Flow] ✅ Complete — customer', id, 'verification flow initiated successfully');
+    // ── COMPLETE PROFILE FLOW (normal registration) ──
+    console.log('[Flow] ✓ Profile complete — starting full verification flow');
+    await startVerificationFlow({ id, email, first_name, last_name });
 
   } catch (error) {
-    console.error('[Flow] ❌ Customer verification flow failed:', error.message);
-    console.error('[Flow] Stack:', error.stack);
+    console.error('[Flow] ❌ Error:', error.message);
+    console.error(error.stack);
   }
 });
 
-// Send email with retry logic (up to 3 attempts with exponential backoff)
-async function sendWithRetry(email, verificationUrl, maxRetries = 3) {
+// ─── Shared verification flow (used for both normal and post-profile-complete) ──
+export async function startVerificationFlow({ id, email, first_name, last_name }) {
+  // Step 1: Create VeriDocID session
+  console.log('[Flow] Step 1: Creating VeriDocID session...');
+  const verification = await createSumaVerification({
+    customerId: id,
+    email,
+    firstName: first_name,
+    lastName: last_name
+  });
+  console.log('[Flow] Session created:', verification.id);
+
+  // Step 2: Send verification email
+  console.log('[Flow] Step 2: Sending verification email...');
+  await sendWithRetry(async () => {
+    await sendVerificationEmail({ to: email, link: verification.verification_url });
+  }, `verification email to ${email}`);
+
+  // Step 3: Send consent email + mark consent_sent metafield
+  console.log('[Flow] Step 3: Sending consent email...');
+  try {
+    await sendConsentEmail({ to: email });
+    // Mark that consent email was sent (used in full-approval check)
+    await setCustomerMetafield(id, 'consent_sent', 'true');
+    console.log('[Flow] Consent email sent to:', email);
+  } catch (err) {
+    console.error('[Flow] Consent email failed (non-critical):', err.message);
+  }
+
+  console.log('[Flow] ✅ Verification flow complete for customer:', id);
+}
+
+// ─── Retry helper ────────────────────────────────────────────────
+async function sendWithRetry(fn, label, maxRetries = 3) {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      await sendVerificationEmail({ to: email, link: verificationUrl });
-      console.log(`[Flow] Verification email sent to: ${email} (attempt ${attempt})`);
+      await fn();
       return;
-    } catch (error) {
-      console.error(`[Flow] Email send attempt ${attempt} failed:`, error.message);
+    } catch (err) {
+      console.error(`[Flow] Attempt ${attempt} failed for ${label}:`, err.message);
       if (attempt < maxRetries) {
-        const delay = attempt * 2000; // 2s, 4s backoff
-        console.log(`[Flow] Retrying in ${delay}ms...`);
-        await new Promise(resolve => setTimeout(resolve, delay));
+        await new Promise(r => setTimeout(r, attempt * 2000));
       } else {
-        console.error(`[Flow] ❌ All ${maxRetries} email attempts failed for ${email}`);
-        throw error;
+        throw err;
       }
     }
   }
 }
-
-// Webhook: Order creation (future use — can verify before fulfilling orders)
-router.post('/order-created', async (req, res) => {
-  if (!verifyShopifyHmac(req)) {
-    return res.status(401).send('Unauthorized');
-  }
-
-  const order = req.body;
-  console.log('[Shopify] Order created:', order.id, '| Customer:', order.customer?.email);
-
-  // TODO: Implement order-based verification logic if needed
-  // Example: Check if customer is verified before processing order
-
-  res.status(200).send('ok');
-});
 
 export default router;
