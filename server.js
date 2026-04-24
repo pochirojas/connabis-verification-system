@@ -69,6 +69,13 @@ app.get('/test/email', async (req, res) => {
   }
 });
 
+// Allow Shopify storefront to embed our pages in iframes
+app.use((req, res, next) => {
+  res.setHeader('X-Frame-Options', 'ALLOW-FROM https://connabis.com.co');
+  res.setHeader('Content-Security-Policy', "frame-ancestors 'self' https://connabis.com.co");
+  next();
+});
+
 // Mount route handlers
 app.use('/webhooks/shopify', shopifyRoutes);
 app.use('/suma', sumaRoutes);

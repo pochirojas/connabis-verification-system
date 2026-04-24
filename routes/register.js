@@ -286,6 +286,19 @@ function registerPage({ error = null, prefill = {} } = {}) {
 </head>
 <body>
 
+  <!-- Hide topbar/header when embedded in Shopify iframe -->
+  <script>
+    if (window.self !== window.top) {
+      document.addEventListener('DOMContentLoaded', function() {
+        var tb = document.querySelector('.topbar');
+        var hd = document.querySelector('.site-header');
+        if (tb) tb.style.display = 'none';
+        if (hd) hd.style.display = 'none';
+        document.body.style.background = 'transparent';
+      });
+    }
+  </script>
+
   <div class="topbar">Connabis Colombia &mdash; Membresía Regulada</div>
 
   <header class="site-header">
@@ -495,6 +508,16 @@ function registerPage({ error = null, prefill = {} } = {}) {
       btn.disabled = true;
       btn.textContent = 'Creando cuenta...';
     });
+
+    // Send height to parent iframe so Shopify page resizes correctly
+    function sendHeight() {
+      const h = document.body.scrollHeight;
+      if (window.parent !== window) {
+        window.parent.postMessage({ height: h }, 'https://connabis.com.co');
+      }
+    }
+    sendHeight();
+    new ResizeObserver(sendHeight).observe(document.body);
   </script>
 
 </body>
