@@ -52,12 +52,18 @@ router.post('/complete', express.urlencoded({ extended: true }), async (req, res
     return res.status(400).send(errorPage('Por favor completa todos los campos requeridos.'));
   }
 
+  // Normalize phone to E.164 (+57XXXXXXXXXX)
+  const normalizePhone = (p) => {
+    let d = p.replace(/[\s\-().]/g, '');
+    if (!d.startsWith('+')) d = '+57' + d.replace(/^57/, '');
+    return d;
+  };
+  const normalizedPhone = normalizePhone(phone.trim());
+
   try {
-    // Build Shopify customer update payload
-    // company = ID number (for Dataico compatibility)
     const profileFields = {
-      phone: phone.trim(),
-      company: id_number.trim(), // ID number stored as company for Dataico
+      phone: normalizedPhone,
+      company: id_number.trim(),
       addresses: [{
         address1: address.trim(),
         zip: (zip || '').trim(),
@@ -66,7 +72,6 @@ router.post('/complete', express.urlencoded({ extended: true }), async (req, res
       }]
     };
 
-    // Update customer profile in Shopify
     await updateCustomerProfile(cid, profileFields);
     console.log('[Profile] Customer profile updated:', cid);
 
@@ -92,6 +97,15 @@ router.post('/complete', express.urlencoded({ extended: true }), async (req, res
   } catch (err) {
     console.error('[Profile] Error updating customer:', err.message);
     logEvent({ type: 'error', status: 'error', detail: `Profile form submission failed: ${err.message}`, customerId: cid, email });
+
+    // Friendly errors for known Shopify validation issues
+    if (err.message.includes('phone') && err.message.includes('already been taken')) {
+      return res.send(errorPage('Ese número de celular ya está registrado en otra cuenta. Por favor usa un número diferente o contáctanos por WhatsApp al +57 310 475 2111.'));
+    }
+    if (err.message.includes('phone') && err.message.includes('invalid')) {
+      return res.send(errorPage('El formato del número de celular no es válido. Usa el formato: +57 300 123 4567.'));
+    }
+
     res.status(500).send(errorPage('Error al guardar tu información. Por favor intenta más tarde.'));
   }
 });
