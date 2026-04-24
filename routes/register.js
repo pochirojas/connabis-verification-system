@@ -166,6 +166,25 @@ function registerPage({ error = null, prefill = {} } = {}) {
 
     .card-body { padding: 32px; }
 
+    .intro {
+      text-align: center;
+      margin-bottom: 28px;
+      padding-bottom: 24px;
+      border-bottom: 1px solid #f0f0f0;
+    }
+    .intro h2 {
+      font-size: 22px;
+      font-weight: 800;
+      color: #111;
+      margin-bottom: 12px;
+      line-height: 1.3;
+    }
+    .intro p {
+      font-size: 14px;
+      color: #555;
+      line-height: 1.7;
+    }
+
     .error-box {
       background: #fdf0f0; border: 1px solid #f5c6c6; border-radius: 4px;
       padding: 12px 16px; margin-bottom: 24px;
@@ -285,6 +304,15 @@ function registerPage({ error = null, prefill = {} } = {}) {
         <p>Únete a la familia Connabis — solo toma 2 minutos</p>
       </div>
       <div class="card-body">
+
+        <div class="intro">
+          <h2>¡Vuélvete miembro Connábico!</h2>
+          <p>
+            Si deseas comprar <strong>exclusivamente hongos medicinales,</strong> NO requerimos
+            una foto de tu documento, pero sí es necesario que completes tu información en el
+            siguiente formulario.
+          </p>
+        </div>
 
         ${error ? `<div class="error-box">${error}</div>` : ''}
 
