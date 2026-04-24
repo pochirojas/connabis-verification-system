@@ -467,7 +467,7 @@ function registerPage({ error = null, prefill = {} } = {}) {
           </div>
 
           <button type="submit" class="submit-btn" id="submitBtn">
-            Crear Cuenta y Continuar →
+            Crear Cuenta
           </button>
 
         </form>
