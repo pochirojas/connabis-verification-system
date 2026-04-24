@@ -16,20 +16,24 @@ router.get('/', (req, res) => {
 // ─── POST /register — Handle submission ──────────────────────────────────────
 router.post('/', async (req, res) => {
   const {
-    first_name, last_name, email, password,
+    first_name, last_name, email, password, password_confirm,
     phone, id_type, id_number,
     birth_date, purchase_intent,
-    address, zip,
+    address, address2, city, province, zip,
     privacy_policy
   } = req.body;
 
   // Basic server-side validation
-  if (!first_name || !last_name || !email || !password || !phone || !id_type || !id_number || !birth_date || !address || !privacy_policy) {
+  if (!first_name || !last_name || !email || !password || !phone || !id_type || !id_number || !birth_date || !address || !city || !province || !privacy_policy) {
     return res.send(registerPage({ error: 'Por favor completa todos los campos requeridos.', prefill: req.body }));
   }
 
   if (password.length < 8) {
     return res.send(registerPage({ error: 'La contraseña debe tener al menos 8 caracteres.', prefill: req.body }));
+  }
+
+  if (password !== password_confirm) {
+    return res.send(registerPage({ error: 'Las contraseñas no coinciden.', prefill: req.body }));
   }
 
   // Age check (must be 18+)
@@ -56,8 +60,10 @@ router.post('/', async (req, res) => {
         last_name: last_name.trim(),
         phone: phone.trim(),
         address1: address.trim(),
+        address2: address2?.trim() || '',
+        city: city.trim(),
+        province: province.trim(),
         zip: zip?.trim() || '',
-        city: '',
         country: 'Colombia',
         country_code: 'CO'
       }]
@@ -311,11 +317,23 @@ function registerPage({ error = null, prefill = {} } = {}) {
               <input type="password" name="password" id="pwdInput"
                      placeholder="Mínimo 8 caracteres" required
                      autocomplete="new-password" minlength="8">
-              <button type="button" class="pwd-toggle" onclick="togglePwd()" aria-label="Mostrar contraseña">
+              <button type="button" class="pwd-toggle" onclick="togglePwd('pwdInput')" aria-label="Mostrar contraseña">
                 👁
               </button>
             </div>
             <p class="hint">Mínimo 8 caracteres</p>
+          </div>
+
+          <div class="field">
+            <label>Volver a Introducir Contraseña <span class="req">*</span></label>
+            <div class="pwd-wrap">
+              <input type="password" name="password_confirm" id="pwdConfirm"
+                     placeholder="Repite tu contraseña" required
+                     autocomplete="new-password" minlength="8">
+              <button type="button" class="pwd-toggle" onclick="togglePwd('pwdConfirm')" aria-label="Mostrar contraseña">
+                👁
+              </button>
+            </div>
           </div>
 
           <div class="field">
@@ -360,14 +378,37 @@ function registerPage({ error = null, prefill = {} } = {}) {
 
           <div class="field">
             <label>Dirección <span class="req">*</span></label>
-            <input type="text" name="address" placeholder="Calle 123 # 45-67, Barrio"
-                   required autocomplete="street-address" ${v('address')}>
+            <input type="text" name="address" placeholder="Calle 123 # 45-67"
+                   required autocomplete="address-line1" ${v('address')}>
           </div>
 
           <div class="field">
-            <label>Código Postal <span class="opt">(opcional)</span></label>
-            <input type="text" name="zip" placeholder="Ej: 680003"
-                   maxlength="10" inputmode="numeric" ${v('zip')}>
+            <label>Apartamento, Casa, Oficina <span class="opt">(opcional)</span></label>
+            <input type="text" name="address2" placeholder="Apto 301, Casa 5, etc."
+                   autocomplete="address-line2" ${v('address2')}>
+          </div>
+
+          <div class="row">
+            <div class="field">
+              <label>Ciudad <span class="req">*</span></label>
+              <input type="text" name="city" placeholder="Bogotá"
+                     required autocomplete="address-level2" ${v('city')}>
+            </div>
+            <div class="field">
+              <label>Código Postal <span class="opt">(opcional)</span></label>
+              <input type="text" name="zip" placeholder="Ej: 110111"
+                     maxlength="10" inputmode="numeric" ${v('zip')}>
+            </div>
+          </div>
+
+          <div class="field">
+            <label>Departamento <span class="req">*</span></label>
+            <div class="select-wrap">
+              <select name="province" required>
+                <option value="">Seleccionar</option>
+                ${['Amazonas','Antioquia','Arauca','Atlántico','Bolívar','Boyacá','Caldas','Caquetá','Casanare','Cauca','Cesar','Chocó','Córdoba','Cundinamarca','Guainía','Guaviare','Huila','La Guajira','Magdalena','Meta','Nariño','Norte de Santander','Putumayo','Quindío','Risaralda','San Andrés y Providencia','Santander','Sucre','Tolima','Valle del Cauca','Vaupés','Vichada','Bogotá D.C.'].map(d => `<option value="${d}" ${sel('province', d)}>${d}</option>`).join('')}
+              </select>
+            </div>
           </div>
 
           <p class="section-title">Tu Interés</p>
@@ -419,8 +460,8 @@ function registerPage({ error = null, prefill = {} } = {}) {
   </div>
 
   <script>
-    function togglePwd() {
-      const input = document.getElementById('pwdInput');
+    function togglePwd(id) {
+      const input = document.getElementById(id);
       input.type = input.type === 'password' ? 'text' : 'password';
     }
 
