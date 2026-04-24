@@ -10,6 +10,7 @@ import shopifyRoutes from './routes/shopify.js';
 import sumaRoutes from './routes/suma.js';
 import profileRoutes from './routes/profile.js';
 import adminRoutes from './routes/admin.js';
+import registerRoutes from './routes/register.js';
 import { sendTestEmail } from './services/email.js';
 import { logEvent } from './services/logger.js';
 
@@ -73,6 +74,7 @@ app.use('/webhooks/shopify', shopifyRoutes);
 app.use('/suma', sumaRoutes);
 app.use('/profile', profileRoutes);
 app.use('/admin', adminRoutes);
+app.use('/register', registerRoutes);
 
 // Catch-all for unknown routes
 app.use('*', (req, res) => {

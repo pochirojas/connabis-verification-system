@@ -174,6 +174,14 @@ async function getNextVerifiedNumber() {
 // ─── Public API ──────────────────────────────────────────────────
 
 // Check if a customer is already verified (has the 'Verified' tag)
+// Create a new customer in Shopify
+export async function createCustomer(fields) {
+  return shopifyAdminFetch('/customers.json', {
+    method: 'POST',
+    body: JSON.stringify({ customer: fields })
+  });
+}
+
 export async function isCustomerAlreadyVerified(customerId) {
   console.log('[Shopify] Checking if customer', customerId, 'is already verified...');
   try {
