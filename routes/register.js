@@ -299,10 +299,6 @@ function registerPage({ error = null, prefill = {} } = {}) {
 
   <div class="page-wrap">
     <div class="card">
-      <div class="card-header">
-        <h1>Crear Cuenta</h1>
-        <p>Únete a la familia Connabis — solo toma 2 minutos</p>
-      </div>
       <div class="card-body">
 
         <div class="intro">
