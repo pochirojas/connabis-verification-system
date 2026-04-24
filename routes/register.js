@@ -19,11 +19,12 @@ router.post('/', async (req, res) => {
     first_name, last_name, email, password,
     phone, id_type, id_number,
     birth_date, purchase_intent,
+    address, zip,
     privacy_policy
   } = req.body;
 
   // Basic server-side validation
-  if (!first_name || !last_name || !email || !password || !phone || !id_type || !id_number || !birth_date || !privacy_policy) {
+  if (!first_name || !last_name || !email || !password || !phone || !id_type || !id_number || !birth_date || !address || !privacy_policy) {
     return res.send(registerPage({ error: 'Por favor completa todos los campos requeridos.', prefill: req.body }));
   }
 
@@ -54,6 +55,9 @@ router.post('/', async (req, res) => {
         first_name: first_name.trim(),
         last_name: last_name.trim(),
         phone: phone.trim(),
+        address1: address.trim(),
+        zip: zip?.trim() || '',
+        city: '',
         country: 'Colombia',
         country_code: 'CO'
       }]
@@ -237,7 +241,7 @@ function registerPage({ error = null, prefill = {} } = {}) {
 
     .submit-btn {
       width: 100%; background: #2d6a4f; color: #fff; border: none;
-      padding: 15px; border-radius: 4px; font-size: 15px; font-weight: 700;
+      padding: 15px; border-radius: 50px; font-size: 15px; font-weight: 700;
       letter-spacing: 0.3px; cursor: pointer; margin-top: 24px;
       transition: background 0.2s;
     }
@@ -354,6 +358,18 @@ function registerPage({ error = null, prefill = {} } = {}) {
                    required autocomplete="tel" ${v('phone')}>
           </div>
 
+          <div class="field">
+            <label>Dirección <span class="req">*</span></label>
+            <input type="text" name="address" placeholder="Calle 123 # 45-67, Barrio"
+                   required autocomplete="street-address" ${v('address')}>
+          </div>
+
+          <div class="field">
+            <label>Código Postal <span class="opt">(opcional)</span></label>
+            <input type="text" name="zip" placeholder="Ej: 680003"
+                   maxlength="10" inputmode="numeric" ${v('zip')}>
+          </div>
+
           <p class="section-title">Tu Interés</p>
 
           <div class="field">
@@ -451,7 +467,7 @@ function successPage() {
       width: 22px; height: 22px; min-width: 22px; font-size: 12px;
       font-weight: 700; display: flex; align-items: center; justify-content: center; }
     a.btn { display: inline-block; background: #2d6a4f; color: #fff; padding: 13px 32px;
-      text-decoration: none; border-radius: 4px; font-weight: 700; font-size: 15px; }
+      text-decoration: none; border-radius: 50px; font-weight: 700; font-size: 15px; }
   </style>
 </head>
 <body>
