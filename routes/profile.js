@@ -161,9 +161,6 @@ function formPage({ cid, email, customer, error = null }) {
     .site-header img { height: 60px; width: auto; }
     .page-wrap { width: 100%; max-width: 580px; padding: 36px 16px 60px; }
     .card { background: #fff; border-radius: 4px; border: 1px solid #e0e0e0; overflow: hidden; }
-    .card-header { background: #2d6a4f; padding: 24px 32px; text-align: center; }
-    .card-header h1 { color: #fff; font-size: 20px; font-weight: 700; letter-spacing: -0.3px; }
-    .card-header p { color: rgba(255,255,255,0.8); font-size: 13px; margin-top: 5px; }
     .card-body { padding: 32px; }
     .greeting { font-size: 17px; font-weight: 600; color: #111; margin-bottom: 6px; }
     .subtitle { font-size: 14px; color: #666; line-height: 1.65; margin-bottom: 24px;
@@ -203,30 +200,37 @@ function formPage({ cid, email, customer, error = null }) {
       letter-spacing: 0.3px; cursor: pointer; margin-top: 24px; transition: background 0.2s; }
     .submit-btn:hover { background: #1b4332; }
     .submit-btn:disabled { background: #aaa; cursor: not-allowed; }
+    .logo-header { width: 100%; background: #fff; border-bottom: 1px solid #e8e8e8;
+      padding: 16px 20px; text-align: center; }
+    .logo-header img { height: 70px; width: auto; }
     .privacy { text-align: center; font-size: 12px; color: #aaa; margin-top: 20px; line-height: 1.6; }
   </style>
 </head>
 <body>
-  <div class="topbar">Connabis Colombia &mdash; Membresía Regulada</div>
-  <header class="site-header">
+  <header class="logo-header">
     <a href="https://connabis.com.co">
-      <img src="https://cdn.shopify.com/s/files/1/0581/4121/2749/files/Logo_Negro_sin_fondo.png"
-           alt="Connabis" onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
+      <img src="https://connabis-verification-system.onrender.com/public/logo-color.jpg"
+           alt="Connabis"
+           onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
       <span style="display:none;font-size:22px;font-weight:800;color:#111;letter-spacing:-0.5px;">CO·NNABIS</span>
     </a>
   </header>
 
   <div class="page-wrap">
     <div class="card">
-      <div class="card-header">
-        <h1>Completa tu Perfil</h1>
-        <p>Requerido para activar tu membresía</p>
-      </div>
       <div class="card-body">
         <p class="greeting">Hola, ${name} 👋</p>
         <p class="subtitle">
-          Registraste tu cuenta con Google. Para activarla necesitamos algunos
-          datos adicionales requeridos por regulación.
+          Registraste tu cuenta con Google. Para activarla necesitamos algunos datos adicionales requeridos por regulación.<br><br>
+          Una vez guardes tu información recibirás un correo con los pasos para:
+          <ol style="margin: 10px 0 0 18px; color: #555; font-size: 14px; line-height: 1.8;">
+            <li>Verificar tu identidad con VeriDocID</li>
+            <li>Firmar tu consentimiento de membresía</li>
+          </ol>
+          <span style="display:block; margin-top:10px; font-size:13px; color:#888;">
+            Si el correo no llega en unos minutos, contáctanos por
+            <a href="https://wa.me/message/G7QTCT6CLRNJM1" style="color:#2d6a4f;font-weight:600;">WhatsApp</a>.
+          </span>
         </p>
 
         ${error ? `<div class="error-box">${error}</div>` : ''}
@@ -309,7 +313,7 @@ function formPage({ cid, email, customer, error = null }) {
             </div>
           </div>
 
-          <button type="submit" class="submit-btn" id="submitBtn">Guardar y Continuar</button>
+          <button type="submit" class="submit-btn" id="submitBtn">Guardar</button>
         </form>
 
         <p class="privacy">Tu información está protegida y solo se usa para verificar tu membresía.</p>
@@ -326,9 +330,7 @@ function formPage({ cid, email, customer, error = null }) {
     // iframe: hide header, send height
     (function() {
       if (window.self !== window.top) {
-        var tb = document.querySelector('.topbar');
-        var hd = document.querySelector('.site-header');
-        if (tb) tb.style.display = 'none';
+        var hd = document.querySelector('.logo-header');
         if (hd) hd.style.display = 'none';
         document.body.style.background = 'transparent';
       }
