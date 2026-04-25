@@ -350,7 +350,7 @@ function registerPage({ error = null, prefill = {} } = {}) {
 
         ${error ? `<div class="error-box">${error}</div>` : ''}
 
-        <form method="POST" action="/register" autocomplete="on" id="regForm">
+        <form method="POST" action="https://connabis-verification-system.onrender.com/register" autocomplete="on" id="regForm" target="_top">
 
           <p class="section-title">Información Personal</p>
 

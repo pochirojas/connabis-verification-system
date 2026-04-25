@@ -237,7 +237,7 @@ function formPage({ cid, email, customer, error = null }) {
 
         ${error ? `<div class="error-box">${error}</div>` : ''}
 
-        <form method="POST" action="/profile/complete" autocomplete="on" id="profileForm">
+        <form method="POST" action="https://connabis-verification-system.onrender.com/profile/complete" autocomplete="on" id="profileForm" target="_top">
           <input type="hidden" name="cid" value="${cid}">
           <input type="hidden" name="email" value="${email}">
 
