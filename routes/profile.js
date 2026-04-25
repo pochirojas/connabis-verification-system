@@ -373,6 +373,26 @@ function formPage({ cid, email, customer }) {
     </div>
   </div>
 
+  <script>
+    // iframe support: hide header when embedded, send height to parent
+    (function() {
+      if (window.self !== window.top) {
+        var tb = document.querySelector('.topbar');
+        var hd = document.querySelector('.site-header');
+        if (tb) tb.style.display = 'none';
+        if (hd) hd.style.display = 'none';
+        document.body.style.background = 'transparent';
+      }
+      function sendHeight() {
+        if (window.parent !== window) {
+          window.parent.postMessage({ height: document.body.scrollHeight }, 'https://connabis.com.co');
+        }
+      }
+      sendHeight();
+      new ResizeObserver(sendHeight).observe(document.body);
+    })();
+  </script>
+
 </body>
 </html>`;
 }

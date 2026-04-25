@@ -254,7 +254,14 @@ export async function sendVerificationResultEmail({ customerId, email, status, r
 }
 
 // Send 'complete your profile' email to external/Google login customers
+// formUrl is the direct Render URL — we rewrite it to the Shopify page URL for the in-store experience
 export async function sendProfileCompleteEmail({ to, formUrl }) {
+  // Rewrite https://connabis-verification-system.onrender.com/profile/complete?cid=X&email=Y
+  //      → https://connabis.com.co/pages/completa-tu-perfil?cid=X&email=Y
+  try {
+    const u = new URL(formUrl);
+    formUrl = 'https://connabis.com.co/pages/completa-tu-perfil' + u.search;
+  } catch (_) { /* keep original if parsing fails */ }
   const from = getFromEmail();
   console.log('[Email] Sending profile completion email to:', to);
   const resend = getResendClient();
