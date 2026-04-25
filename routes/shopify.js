@@ -113,7 +113,8 @@ export async function startVerificationFlow({ id, email, first_name, last_name }
   if (verificationUrl) {
     // Reuse the pre-generated link — instant send
     console.log('[Flow] Using pre-generated SUMA session URL');
-    await setCustomerMetafield(id, 'pending_verification_url', ''); // clear it
+    // Note: we don't clear the metafield here — setting blank causes a Shopify 422.
+    // It's already been read; the verification_sent flag below prevents reuse.
   } else {
     // Step 1: Create a fresh VeriDocID session
     console.log('[Flow] Step 1: Creating VeriDocID session...');
