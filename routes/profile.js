@@ -83,8 +83,9 @@ router.post('/complete', express.urlencoded({ extended: true }), async (req, res
   try {
     const profileFields = {
       phone: normalizedPhone,
-      company: id_number.trim(),
+      company: id_number.trim(),        // customer-level (some AR versions read here)
       addresses: [{
+        company: id_number.trim(),       // default_address.company — where Shopify/AR actually stores it
         address1: address.trim(),
         address2: address2?.trim() || '',
         city: city.trim(),
