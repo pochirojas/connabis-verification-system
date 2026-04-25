@@ -255,6 +255,8 @@ export async function sendVerificationResultEmail({ customerId, email, status, r
 
 // Send 'complete your profile' email to external/Google login customers
 export async function sendProfileCompleteEmail({ to, formUrl }) {
+  // In HTML attributes, & must be &amp; — otherwise email clients break the URL
+  const safeUrl = formUrl.replace(/&/g, '&amp;');
   const from = getFromEmail();
   console.log('[Email] Sending profile completion email to:', to);
   const resend = getResendClient();
@@ -281,7 +283,7 @@ export async function sendProfileCompleteEmail({ to, formUrl }) {
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
             <tr>
               <td align="center" style="padding:0 0 32px;">
-                <a href="${formUrl}"
+                <a href="${safeUrl}"
                    style="background:#2d6a4f;color:#fff;padding:14px 32px;
                           text-decoration:none;border-radius:6px;display:inline-block;
                           font-size:16px;font-weight:bold;">
