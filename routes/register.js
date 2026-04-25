@@ -7,6 +7,9 @@ import { startVerificationFlow } from './shopify.js';
 
 const router = express.Router();
 
+// Parse form bodies for this router (belt-and-suspenders in case global middleware hasn't run)
+router.use(express.urlencoded({ extended: true }));
+
 // ─── GET /register — Show the form ───────────────────────────────────────────
 router.get('/', (req, res) => {
   const error = req.query.error || null;
@@ -311,27 +314,12 @@ function registerPage({ error = null, prefill = {} } = {}) {
 </head>
 <body>
 
-  <!-- Hide topbar/header when embedded in Shopify iframe -->
-  <script>
-    if (window.self !== window.top) {
-      document.addEventListener('DOMContentLoaded', function() {
-        var tb = document.querySelector('.topbar');
-        var hd = document.querySelector('.site-header');
-        if (tb) tb.style.display = 'none';
-        if (hd) hd.style.display = 'none';
-        document.body.style.background = 'transparent';
-      });
-    }
-  </script>
-
-  <div class="topbar">Connabis Colombia &mdash; Membresía Regulada</div>
-
-  <header class="site-header">
+  <header style="width:100%;background:#fff;border-bottom:1px solid #e8e8e8;padding:16px 20px;text-align:center;">
     <a href="https://connabis.com.co">
-      <img src="https://cdn.shopify.com/s/files/1/0581/4121/2749/files/Logo_Negro_sin_fondo.png"
-           alt="Connabis"
+      <img src="https://connabis-verification-system.onrender.com/public/logo-color.jpg"
+           alt="Connabis" style="height:70px;width:auto;"
            onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
-      <span style="display:none;font-size:22px;font-weight:800;color:#111;letter-spacing:-0.5px;">CO·NNABIS</span>
+      <span style="display:none;font-size:22px;font-weight:800;color:#111;">CO·NNABIS</span>
     </a>
   </header>
 
@@ -569,11 +557,9 @@ function successPage() {
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
       background: #f7f7f7; min-height: 100vh; display: flex; flex-direction: column; align-items: center; }
-    .topbar { width: 100%; background: #1a2235; padding: 10px 20px; text-align: center;
-      font-size: 13px; color: rgba(255,255,255,0.85); }
     .site-header { width: 100%; background: #fff; border-bottom: 1px solid #e8e8e8;
-      padding: 18px 20px; text-align: center; }
-    .site-header img { height: 60px; width: auto; }
+      padding: 16px 20px; text-align: center; }
+    .site-header img { height: 70px; width: auto; }
     .page-wrap { width: 100%; max-width: 520px; padding: 48px 16px 60px;
       display: flex; align-items: flex-start; justify-content: center; flex: 1; }
     .card { background: #fff; border: 1px solid #e0e0e0; border-radius: 4px;
@@ -594,12 +580,9 @@ function successPage() {
   </style>
 </head>
 <body>
-  <div class="topbar">Connabis Colombia &mdash; Membresía Regulada</div>
   <header class="site-header">
     <a href="https://connabis.com.co">
-      <img src="https://cdn.shopify.com/s/files/1/0581/4121/2749/files/Logo_Negro_sin_fondo.png" alt="Connabis"
-           onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
-      <span style="display:none;font-size:22px;font-weight:800;color:#111;">CO·NNABIS</span>
+      <img src="https://connabis-verification-system.onrender.com/public/logo-color.jpg" alt="Connabis">
     </a>
   </header>
   <div class="page-wrap">
