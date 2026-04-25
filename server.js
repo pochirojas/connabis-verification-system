@@ -20,6 +20,9 @@ const app = express();
 // Serve static assets (e.g. email banner images)
 app.use('/public', express.static(join(__dirname, 'public')));
 
+// Middleware: Parse URL-encoded form bodies (register, profile forms)
+app.use(express.urlencoded({ extended: true }));
+
 // Middleware: Parse JSON and preserve raw body for HMAC verification
 app.use(express.json({
   verify: (req, res, buf) => {
