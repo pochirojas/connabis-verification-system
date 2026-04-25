@@ -221,17 +221,17 @@ function formPage({ cid, email, customer, error = null }) {
     <div class="card">
       <div class="card-body">
         <p class="greeting">Hola, ${name} 👋</p>
-        <p class="subtitle">
-          Registraste tu cuenta con Google. Para activarla necesitamos algunos datos adicionales requeridos por regulación.<br><br>
-          Una vez guardes tu información recibirás un correo con los pasos para:
-          <ol style="margin: 10px 0 0 18px; color: #555; font-size: 14px; line-height: 1.8;">
-            <li>Verificar tu identidad con VeriDocID</li>
-            <li>Firmar tu consentimiento de membresía</li>
-          </ol>
-          <span style="display:block; margin-top:10px; font-size:13px; color:#888;">
-            Si el correo no llega en unos minutos, contáctanos por
-            <a href="https://wa.me/message/G7QTCT6CLRNJM1" style="color:#2d6a4f;font-weight:600;">WhatsApp</a>.
-          </span>
+        <p style="font-size:14px;color:#666;line-height:1.65;margin-bottom:12px;">
+          Registraste tu cuenta con Google. Para activarla necesitamos algunos datos adicionales requeridos por regulación.
+        </p>
+        <p style="font-size:14px;color:#555;margin-bottom:6px;">Una vez guardes tu información recibirás un correo con los pasos para:</p>
+        <ol style="margin: 0 0 10px 20px; color: #555; font-size: 14px; line-height: 1.8;">
+          <li>Verificar tu identidad con VeriDocID</li>
+          <li>Firmar tu consentimiento de membresía</li>
+        </ol>
+        <p style="font-size:13px;color:#999;margin-bottom:24px;padding-bottom:20px;border-bottom:1px solid #f0f0f0;">
+          Si el correo no llega en unos minutos, contáctanos por
+          <a href="https://wa.me/message/G7QTCT6CLRNJM1" style="color:#2d6a4f;font-weight:600;">WhatsApp</a>.
         </p>
 
         ${error ? `<div class="error-box">${error}</div>` : ''}
@@ -355,11 +355,9 @@ const sharedShell = (content) => `<!DOCTYPE html>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
       background: #f7f7f7; min-height: 100vh; display: flex; flex-direction: column; align-items: center; }
-    .topbar { width: 100%; background: #1a2235; padding: 10px 20px; text-align: center;
-      font-size: 13px; color: rgba(255,255,255,0.85); }
-    .site-header { width: 100%; background: #fff; border-bottom: 1px solid #e8e8e8;
-      padding: 18px 20px; text-align: center; }
-    .site-header img { height: 60px; width: auto; }
+    .logo-header { width: 100%; background: #fff; border-bottom: 1px solid #e8e8e8;
+      padding: 16px 20px; text-align: center; }
+    .logo-header img { height: 70px; width: auto; }
     .page-wrap { width: 100%; max-width: 480px; padding: 48px 16px 60px;
       display: flex; align-items: center; justify-content: center; flex: 1; }
     .card { background: #fff; border: 1px solid #e0e0e0; border-radius: 4px;
@@ -368,10 +366,9 @@ const sharedShell = (content) => `<!DOCTYPE html>
   </style>
 </head>
 <body>
-  <div class="topbar">Connabis Colombia &mdash; Membersía Regulada</div>
-  <header class="site-header">
+  <header class="logo-header">
     <a href="https://connabis.com.co">
-      <img src="https://cdn.shopify.com/s/files/1/0581/4121/2749/files/Logo_Negro_sin_fondo.png" alt="Connabis"
+      <img src="https://connabis-verification-system.onrender.com/public/logo-color.jpg" alt="Connabis"
            onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
       <span style="display:none;font-size:22px;font-weight:800;color:#111;">CO·NNABIS</span>
     </a>
