@@ -90,6 +90,7 @@ router.post('/complete', express.urlencoded({ extended: true }), async (req, res
         city: city.trim(),
         province: province.trim(),
         zip: (zip || '').trim(),
+        country: 'Colombia',
         country_code: 'CO',
       }]
     };
