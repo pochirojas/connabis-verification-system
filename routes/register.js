@@ -74,10 +74,11 @@ router.post('/', async (req, res) => {
       password,
       password_confirmation: password,
       phone: normalizedPhone,
-      company: id_number.trim(), // ID number stored as company for Dataico
+      company: id_number.trim(), // customer-level
       tags: 'Not Verified',
       send_email_welcome: false,
       addresses: [{
+        company: id_number.trim(), // default_address.company — where Shopify/AR actually reads it
         first_name: first_name.trim(),
         last_name: last_name.trim(),
         phone: normalizedPhone,
