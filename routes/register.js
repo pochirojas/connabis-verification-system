@@ -23,9 +23,31 @@ router.post('/', async (req, res) => {
     privacy_policy
   } = req.body;
 
-  // Basic server-side validation
-  if (!first_name || !last_name || !email || !password || !phone || !id_type || !id_number || !birth_date || !address || !city || !province || !privacy_policy) {
-    return res.send(registerPage({ error: 'Por favor completa todos los campos requeridos.', prefill: req.body }));
+  // Normalize phone: strip whitespace/dashes, prepend +57 if not already international
+  const normalizePhone = (p = '') => {
+    let d = p.replace(/[\s\-().]/g, '');
+    if (!d.startsWith('+')) d = '+57' + d.replace(/^0+/, '').replace(/^57/, '');
+    return d;
+  };
+  const normalizedPhone = normalizePhone(phone);
+
+  // Basic server-side validation — list missing fields explicitly
+  const missing = [];
+  if (!first_name?.trim()) missing.push('Nombre');
+  if (!last_name?.trim()) missing.push('Apellido');
+  if (!email?.trim()) missing.push('Correo');
+  if (!password) missing.push('Contraseña');
+  if (!id_type) missing.push('Tipo de documento');
+  if (!id_number?.trim()) missing.push('Número de documento');
+  if (!birth_date) missing.push('Fecha de nacimiento');
+  if (!normalizedPhone || normalizedPhone === '+57') missing.push('Celular');
+  if (!address?.trim()) missing.push('Dirección');
+  if (!city?.trim()) missing.push('Ciudad');
+  if (!province) missing.push('Departamento');
+  if (!privacy_policy) missing.push('Política de privacidad');
+
+  if (missing.length > 0) {
+    return res.send(registerPage({ error: `Por favor completa los siguientes campos: ${missing.join(', ')}.`, prefill: req.body }));
   }
 
   if (password.length < 8) {
@@ -39,7 +61,7 @@ router.post('/', async (req, res) => {
   // Age check (must be 18+)
   const dob = new Date(birth_date);
   const age = Math.floor((Date.now() - dob.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
-  if (age < 18) {
+  if (isNaN(age) || age < 18) {
     return res.send(registerPage({ error: 'Debes tener al menos 18 años para registrarte.', prefill: req.body }));
   }
 
@@ -51,14 +73,14 @@ router.post('/', async (req, res) => {
       email: email.trim().toLowerCase(),
       password,
       password_confirmation: password,
-      phone: phone.trim(),
+      phone: normalizedPhone,
       company: id_number.trim(), // ID number stored as company for Dataico
       tags: 'Not Verified',
       send_email_welcome: false,
       addresses: [{
         first_name: first_name.trim(),
         last_name: last_name.trim(),
-        phone: phone.trim(),
+        phone: normalizedPhone,
         address1: address.trim(),
         address2: address2?.trim() || '',
         city: city.trim(),
@@ -101,8 +123,10 @@ router.post('/', async (req, res) => {
       logEvent({ type: 'error', status: 'error', detail: `Post-register verification flow failed: ${err.message}`, customerId: id, email: customer.email });
     });
 
-    // Redirect to success page
-    res.redirect('/register/success');
+    // Redirect to success — use top-level navigation so it works both standalone and in iframe
+    res.send(`<!DOCTYPE html><html><head><meta charset="UTF-8">
+      <script>window.top.location.href = '/register/success';<\/script>
+    </head><body></body></html>`);
 
   } catch (err) {
     console.error('[Register] Error:', err.message);
@@ -409,8 +433,18 @@ function registerPage({ error = null, prefill = {} } = {}) {
 
           <div class="field">
             <label>Celular <span class="req">*</span></label>
-            <input type="tel" name="phone" placeholder="+57 300 123 4567"
-                   required autocomplete="tel" ${v('phone')}>
+            <div style="display:flex;gap:0;">
+              <span style="display:flex;align-items:center;padding:12px 14px;background:#f0f0f0;
+                           border:1px solid #d5d5d5;border-right:none;border-radius:4px 0 0 4px;
+                           font-size:15px;color:#444;white-space:nowrap;font-weight:600;">+57</span>
+              <input type="tel" name="phone" id="phoneInput"
+                     placeholder="300 123 4567"
+                     required autocomplete="tel"
+                     inputmode="numeric"
+                     style="border-radius:0 4px 4px 0;flex:1;"
+                     ${v('phone')}>
+            </div>
+            <p class="hint">Solo dígitos, sin el código de país</p>
           </div>
 
           <div class="field">

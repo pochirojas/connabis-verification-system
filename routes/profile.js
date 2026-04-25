@@ -343,9 +343,17 @@ function formPage({ cid, email, customer }) {
 
           <div class="field">
             <label>Celular <span class="req">*</span></label>
-            <input type="tel" name="phone"
-                   placeholder="+57 300 123 4567"
-                   required autocomplete="tel">
+            <div style="display:flex;gap:0;">
+              <span style="display:flex;align-items:center;padding:12px 14px;background:#f0f0f0;
+                           border:1px solid #d5d5d5;border-right:none;border-radius:4px 0 0 4px;
+                           font-size:15px;color:#444;white-space:nowrap;font-weight:600;">+57</span>
+              <input type="tel" name="phone"
+                     placeholder="300 123 4567"
+                     required autocomplete="tel"
+                     inputmode="numeric"
+                     style="border-radius:0 4px 4px 0;flex:1;">
+            </div>
+            <p class="hint">Solo dígitos, sin el código de país</p>
           </div>
 
           <div class="field">
