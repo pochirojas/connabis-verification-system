@@ -13,6 +13,7 @@ import adminRoutes from './routes/admin.js';
 import registerRoutes from './routes/register.js';
 import { sendTestEmail } from './services/email.js';
 import { logEvent } from './services/logger.js';
+import { getCustomer } from './services/shopify.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -77,6 +78,26 @@ app.use((req, res, next) => {
   res.setHeader('X-Frame-Options', 'ALLOW-FROM https://connabis.com.co');
   res.setHeader('Content-Security-Policy', "frame-ancestors 'self' https://connabis.com.co");
   next();
+});
+
+// ─── Cart Gate ─────────────────────────────────────────────────────────────
+// Called by the storefront JS to check if the logged-in customer is verified.
+// Returns JSON so the browser can redirect without a page load on our server.
+// GET /cart-gate?cid=<shopify_customer_id>
+app.get('/cart-gate', async (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', 'https://connabis.com.co');
+  res.setHeader('Access-Control-Allow-Methods', 'GET');
+  const { cid } = req.query;
+  if (!cid) return res.json({ verified: false, reason: 'no_customer' });
+  try {
+    const customer = await getCustomer(cid);
+    const tags = (customer?.tags || '').split(',').map(t => t.trim());
+    const verified = tags.includes('Verified');
+    res.json({ verified, tags });
+  } catch (err) {
+    console.error('[CartGate] Error:', err.message);
+    res.json({ verified: false, reason: 'error' });
+  }
 });
 
 // Mount route handlers
