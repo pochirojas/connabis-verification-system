@@ -157,18 +157,17 @@ function registerPage({ error = null, prefill = {} } = {}) {
   <title>Crear Cuenta - Connabis</title>
   <style>
     /* Scoped to #cnreg — no styles leak into parent Shopify page */
+    html, body { margin: 0; padding: 0; background: transparent; }
     #cnreg, #cnreg *, #cnreg *::before, #cnreg *::after { box-sizing: border-box; }
 
     #cnreg {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
-      width: 100%; max-width: 600px; margin: 0 auto; padding: 0 0 60px;
+      width: 100%; max-width: 680px; margin: 0 auto; padding: 32px 24px 60px;
     }
 
-    #cnreg .card {
-      background: #fff; border-radius: 4px; border: 1px solid #e0e0e0; overflow: hidden;
-    }
+    #cnreg .card { background: transparent; border: none; overflow: visible; }
 
-    #cnreg .card-body { padding: 32px; }
+    #cnreg .card-body { padding: 0; }
 
     #cnreg .intro {
       text-align: center; margin-bottom: 28px;
