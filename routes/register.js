@@ -464,7 +464,7 @@ function registerPage({ error = null, prefill = {} } = {}) {
         </form>
 
         <p class="login-link">
-          ¿Ya tienes cuenta? <a href="https://connabis.com.co/account/login">Inicia sesión aquí</a>
+          ¿Ya tienes cuenta? <a href="https://connabis.com.co/account/login" target="_top">Inicia sesión aquí</a>
         </p>
 
         <p class="privacy">
