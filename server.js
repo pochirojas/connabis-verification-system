@@ -13,7 +13,7 @@ import adminRoutes from './routes/admin.js';
 import registerRoutes from './routes/register.js';
 import { sendTestEmail } from './services/email.js';
 import { logEvent } from './services/logger.js';
-import { getCustomer } from './services/shopify.js';
+import { getCustomer, getCustomerMetafield } from './services/shopify.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -30,6 +30,30 @@ app.use(express.json({
     req.rawBody = buf;
   }
 }));
+
+// ─── OAuth callback (used to upgrade app scopes) ───────────────────────────
+// After visiting the install URL, Shopify redirects here with a `code`.
+// We exchange it for a permanent access token and print the new scopes.
+app.get('/auth/callback', async (req, res) => {
+  const { code, shop } = req.query;
+  if (!code || !shop) return res.send('Missing code or shop param');
+  try {
+    const tokenRes = await fetch(`https://${shop}/admin/oauth/access_token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        client_id: process.env.SHOPIFY_CLIENT_ID,
+        client_secret: process.env.SHOPIFY_CLIENT_SECRET,
+        code
+      })
+    });
+    const data = await tokenRes.json();
+    console.log('[OAuth Callback] New token data:', JSON.stringify(data));
+    res.send(`<pre>OAuth success!\nScope: ${data.scope}\nToken: ${data.access_token}\n\nSave the token if needed, then close this tab.</pre>`);
+  } catch (err) {
+    res.send('Error: ' + err.message);
+  }
+});
 
 // Health check endpoint (required for Render)
 app.get('/health', (req, res) => {
@@ -90,10 +114,13 @@ app.get('/cart-gate', async (req, res) => {
   const { cid } = req.query;
   if (!cid) return res.json({ verified: false, reason: 'no_customer' });
   try {
-    const customer = await getCustomer(cid);
-    const tags = (customer?.tags || '').split(',').map(t => t.trim());
-    const verified = tags.includes('Verified');
-    res.json({ verified, tags });
+    // IMPORTANT: check verified_number metafield, NOT just the Verified tag.
+    // The tag can be added manually in Shopify admin — the metafield is only
+    // set by our system after a successful VeriDocID scan.
+    const verifiedNumber = await getCustomerMetafield(cid, 'verified_number');
+    const verified = !!verifiedNumber;
+    console.log(`[CartGate] Customer ${cid}: verified_number=${verifiedNumber} → verified=${verified}`);
+    res.json({ verified });
   } catch (err) {
     console.error('[CartGate] Error:', err.message);
     res.json({ verified: false, reason: 'error' });
