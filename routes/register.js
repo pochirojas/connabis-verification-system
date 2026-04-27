@@ -157,7 +157,6 @@ function registerPage({ error = null, prefill = {} } = {}) {
   <title>Crear Cuenta - Connabis</title>
   <style>
     /* Scoped to #cnreg — no styles leak into parent Shopify page */
-    html, body { margin: 0; padding: 0; background: transparent; }
     #cnreg, #cnreg *, #cnreg *::before, #cnreg *::after { box-sizing: border-box; }
 
     #cnreg {
