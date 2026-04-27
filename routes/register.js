@@ -129,7 +129,7 @@ router.post('/', async (req, res) => {
 
     // Redirect to success — use top-level navigation so it works both standalone and in iframe
     res.send(`<!DOCTYPE html><html><head><meta charset="UTF-8">
-      <script>window.top.location.href = '/register/success';<\/script>
+      <script>window.top.location.href = 'https://connabis.com.co/pages/verificacion-requerida';<\/script>
     </head><body></body></html>`);
 
   } catch (err) {

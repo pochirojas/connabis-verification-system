@@ -382,7 +382,7 @@ function successPage(message) {
     <div style="font-size:52px;margin-bottom:16px;">✅</div>
     <h2 style="color:#2d6a4f;font-size:22px;font-weight:700;margin-bottom:10px;">¡Todo listo!</h2>
     <p style="color:#555;font-size:15px;line-height:1.65;margin-bottom:28px;">${message}</p>
-    <a href="https://connabis.com.co"
+    <a href="https://connabis.com.co/pages/verificacion-pendiente"
        style="display:inline-block;background:#2d6a4f;color:#fff;padding:13px 28px;
               text-decoration:none;border-radius:4px;font-weight:700;font-size:15px;">
       Volver a Connabis
