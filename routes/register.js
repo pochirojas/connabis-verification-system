@@ -156,6 +156,9 @@ function registerPage({ error = null, prefill = {} } = {}) {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Crear Cuenta - Connabis</title>
   <style>
+    /* Reset iframe document — only affects this iframe, never leaks to parent */
+    html, body { margin: 0; padding: 0; overflow-x: hidden; }
+
     /* Scoped to #cnreg — no styles leak into parent Shopify page */
     #cnreg, #cnreg *, #cnreg *::before, #cnreg *::after { box-sizing: border-box; }
 
