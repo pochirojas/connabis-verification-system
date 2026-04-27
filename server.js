@@ -104,6 +104,33 @@ app.use((req, res, next) => {
   next();
 });
 
+// ─── Cart Gate Redirect ────────────────────────────────────────────────────
+// Locksmith redirects blocked cart visitors here.
+// We check the customer's verified_number metafield server-side and either
+// send them back to /cart (verified) or to /pages/verificacion-pendiente.
+// GET /cart-redirect?cid=<shopify_customer_id>
+app.get('/cart-redirect', async (req, res) => {
+  const { cid } = req.query;
+  if (!cid) {
+    // Not logged in → send to registro
+    return res.redirect('https://connabis.com.co/pages/registro');
+  }
+  try {
+    const verifiedNumber = await getCustomerMetafield(cid, 'verified_number');
+    if (verifiedNumber) {
+      // Truly verified — send back to cart
+      console.log(`[CartRedirect] Customer ${cid} verified (${verifiedNumber}) — allowing cart`);
+      return res.redirect('https://connabis.com.co/cart');
+    } else {
+      console.log(`[CartRedirect] Customer ${cid} not verified — redirecting to verificacion-pendiente`);
+      return res.redirect('https://connabis.com.co/pages/verificacion-pendiente');
+    }
+  } catch (err) {
+    console.error('[CartRedirect] Error:', err.message);
+    return res.redirect('https://connabis.com.co/pages/verificacion-pendiente');
+  }
+});
+
 // ─── Cart Gate ─────────────────────────────────────────────────────────────
 // Called by the storefront JS to check if the logged-in customer is verified.
 // Returns JSON so the browser can redirect without a page load on our server.
