@@ -156,157 +156,122 @@ function registerPage({ error = null, prefill = {} } = {}) {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Crear Cuenta - Connabis</title>
   <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    /* Scoped to #cnreg — no styles leak into parent Shopify page */
+    #cnreg, #cnreg *, #cnreg *::before, #cnreg *::after { box-sizing: border-box; }
 
-    body {
+    #cnreg {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
-      background: #f7f7f7;
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
+      width: 100%; max-width: 600px; margin: 0 auto; padding: 0 0 60px;
     }
 
-    .topbar {
-      width: 100%; background: #1a2235; padding: 10px 20px;
-      text-align: center; font-size: 13px; color: rgba(255,255,255,0.85);
-    }
-
-    .site-header {
-      width: 100%; background: #fff; border-bottom: 1px solid #e8e8e8;
-      padding: 18px 20px; text-align: center;
-    }
-    .site-header img { height: 60px; width: auto; }
-
-    .page-wrap {
-      width: 100%; max-width: 600px; padding: 36px 16px 60px;
-    }
-
-    .card {
+    #cnreg .card {
       background: #fff; border-radius: 4px; border: 1px solid #e0e0e0; overflow: hidden;
     }
 
-    .card-header {
-      background: #2d6a4f; padding: 24px 32px; text-align: center;
-    }
-    .card-header h1 { color: #fff; font-size: 20px; font-weight: 700; letter-spacing: -0.3px; }
-    .card-header p { color: rgba(255,255,255,0.8); font-size: 13px; margin-top: 5px; }
+    #cnreg .card-body { padding: 32px; }
 
-    .card-body { padding: 32px; }
+    #cnreg .intro {
+      text-align: center; margin-bottom: 28px;
+      padding-bottom: 24px; border-bottom: 1px solid #f0f0f0;
+    }
+    #cnreg .intro h2 {
+      font-size: 22px; font-weight: 800; color: #111;
+      margin-bottom: 12px; line-height: 1.3;
+    }
+    #cnreg .intro p { font-size: 14px; color: #555; line-height: 1.7; }
 
-    .intro {
-      text-align: center;
-      margin-bottom: 28px;
-      padding-bottom: 24px;
-      border-bottom: 1px solid #f0f0f0;
-    }
-    .intro h2 {
-      font-size: 22px;
-      font-weight: 800;
-      color: #111;
-      margin-bottom: 12px;
-      line-height: 1.3;
-    }
-    .intro p {
-      font-size: 14px;
-      color: #555;
-      line-height: 1.7;
-    }
-
-    .error-box {
+    #cnreg .error-box {
       background: #fdf0f0; border: 1px solid #f5c6c6; border-radius: 4px;
       padding: 12px 16px; margin-bottom: 24px;
       font-size: 14px; color: #c0392b; line-height: 1.5;
     }
-    .error-box a { color: #c0392b; }
+    #cnreg .error-box a { color: #c0392b; }
 
-    .section-title {
+    #cnreg .section-title {
       font-size: 11px; font-weight: 700; color: #2d6a4f;
       text-transform: uppercase; letter-spacing: 1px;
       margin: 28px 0 16px; padding-bottom: 8px;
-      border-bottom: 2px solid #e8f5e9;
+      border-bottom: 2px solid #e8f5e9; display: block;
     }
-    .section-title:first-of-type { margin-top: 0; }
+    #cnreg .section-title:first-of-type { margin-top: 0; }
 
-    .field { margin-bottom: 18px; }
+    #cnreg .field { margin-bottom: 18px; }
 
-    label {
+    #cnreg label {
       display: block; font-size: 12px; font-weight: 700; color: #444;
       text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 7px;
     }
-    .req { color: #c0392b; margin-left: 1px; }
-    .opt { color: #aaa; font-weight: 400; text-transform: none; font-size: 11px; letter-spacing: 0; }
+    #cnreg .req { color: #c0392b; margin-left: 1px; }
+    #cnreg .opt { color: #aaa; font-weight: 400; text-transform: none; font-size: 11px; letter-spacing: 0; }
 
-    input[type="text"],
-    input[type="email"],
-    input[type="password"],
-    input[type="tel"],
-    input[type="date"],
-    select {
+    #cnreg input[type="text"],
+    #cnreg input[type="email"],
+    #cnreg input[type="password"],
+    #cnreg input[type="tel"],
+    #cnreg input[type="date"],
+    #cnreg select {
       width: 100%; padding: 12px 14px; border: 1px solid #d5d5d5;
       border-radius: 4px; font-size: 15px; color: #111; background: #fff;
       -webkit-appearance: none; appearance: none;
       transition: border-color 0.15s, box-shadow 0.15s;
       line-height: 1.4;
     }
-    input:focus, select:focus {
+    #cnreg input:focus, #cnreg select:focus {
       outline: none; border-color: #2d6a4f;
       box-shadow: 0 0 0 3px rgba(45,106,79,0.1);
     }
-    input[type="date"] { color: #111; }
+    #cnreg input[type="date"] { color: #111; }
 
-    .select-wrap { position: relative; }
-    .select-wrap::after {
+    #cnreg .select-wrap { position: relative; }
+    #cnreg .select-wrap::after {
       content: ''; position: absolute; right: 14px; top: 50%;
       transform: translateY(-50%); width: 0; height: 0;
       border-left: 5px solid transparent; border-right: 5px solid transparent;
       border-top: 6px solid #888; pointer-events: none;
     }
 
-    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-    @media (max-width: 480px) { .row { grid-template-columns: 1fr; } }
+    #cnreg .row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    @media (max-width: 480px) { #cnreg .row { grid-template-columns: 1fr; } }
 
-    .hint { font-size: 11px; color: #999; margin-top: 5px; }
+    #cnreg .hint { font-size: 11px; color: #999; margin-top: 5px; }
 
-    /* Password strength */
-    .pwd-wrap { position: relative; }
-    .pwd-toggle {
+    #cnreg .pwd-wrap { position: relative; }
+    #cnreg .pwd-toggle {
       position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
       background: none; border: none; cursor: pointer; color: #888;
       font-size: 13px; padding: 4px;
     }
 
-    /* Checkbox */
-    .checkbox-wrap {
+    #cnreg .checkbox-wrap {
       display: flex; align-items: flex-start; gap: 12px;
       padding: 14px; background: #f9f9f9; border: 1px solid #e8e8e8;
       border-radius: 4px; cursor: pointer;
     }
-    .checkbox-wrap input[type="checkbox"] {
+    #cnreg .checkbox-wrap input[type="checkbox"] {
       width: 18px; height: 18px; min-width: 18px; margin-top: 1px;
       accent-color: #2d6a4f; cursor: pointer;
     }
-    .checkbox-wrap label {
+    #cnreg .checkbox-wrap label {
       font-size: 13px; font-weight: 400; color: #444;
       text-transform: none; letter-spacing: 0; cursor: pointer; margin: 0;
     }
-    .checkbox-wrap a { color: #2d6a4f; }
+    #cnreg .checkbox-wrap a { color: #2d6a4f; }
 
-    .submit-btn {
+    #cnreg .submit-btn {
       width: 100%; background: #2d6a4f; color: #fff; border: none;
       padding: 15px; border-radius: 50px; font-size: 15px; font-weight: 700;
       letter-spacing: 0.3px; cursor: pointer; margin-top: 24px;
       transition: background 0.2s;
     }
-    .submit-btn:hover { background: #1b4332; }
-    .submit-btn:disabled { background: #aaa; cursor: not-allowed; }
+    #cnreg .submit-btn:hover { background: #1b4332; }
+    #cnreg .submit-btn:disabled { background: #aaa; cursor: not-allowed; }
 
-    .login-link {
+    #cnreg .login-link {
       text-align: center; font-size: 13px; color: #888; margin-top: 20px;
     }
-    .login-link a { color: #2d6a4f; font-weight: 600; text-decoration: none; }
+    #cnreg .login-link a { color: #2d6a4f; font-weight: 600; text-decoration: none; }
 
-    .privacy {
+    #cnreg .privacy {
       text-align: center; font-size: 12px; color: #aaa;
       margin-top: 16px; line-height: 1.6;
     }
@@ -314,16 +279,7 @@ function registerPage({ error = null, prefill = {} } = {}) {
 </head>
 <body>
 
-  <header style="width:100%;background:#fff;border-bottom:1px solid #e8e8e8;padding:16px 20px;text-align:center;">
-    <a href="https://connabis.com.co">
-      <img src="https://connabis-verification-system.onrender.com/public/logo-color.jpg"
-           alt="Connabis" style="height:70px;width:auto;"
-           onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
-      <span style="display:none;font-size:22px;font-weight:800;color:#111;">CO·NNABIS</span>
-    </a>
-  </header>
-
-  <div class="page-wrap">
+  <div id="cnreg">
     <div class="card">
       <div class="card-body">
 
@@ -517,7 +473,7 @@ function registerPage({ error = null, prefill = {} } = {}) {
         </p>
       </div>
     </div>
-  </div>
+  </div><!-- #cnreg -->
 
   <script>
     function togglePwd(id) {
