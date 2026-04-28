@@ -40,23 +40,19 @@ router.get('/callback', async (req, res) => {
         }
 
         const results = await getVerificationResults(uuid);
-        const globalResult = results?.globalResult ?? results?.GlobalResult ?? results?.result ?? results?.Result;
-        const isVerified = globalResult === true || globalResult === 'true' || globalResult === 1 ||
-          String(globalResult).toLowerCase() === 'ok' || String(globalResult).toLowerCase() === 'pass';
-
+        const isVerified = determineVerificationSuccess(results);
+        const globalResult = results?.globalResult ?? results?.GlobalResult;
         console.log('[Callback] GlobalResult:', globalResult, '| isVerified:', isVerified);
 
-        // Get customer email for Shopify update
-        const customerData = await getCustomer(customer).catch(() => null);
-        const email = customerData?.email || null;
-        const idNumber = customerData?.company || customerData?.default_address?.company || null;
-
         if (isVerified) {
-          await markCustomerVerified({ customerId: customer, email, idNumber });
-          logEvent({ type: 'verification', status: 'ok', detail: `Customer verified via callback polling — number ${idNumber}`, customerId: customer, email });
-          console.log('[Callback] ✅ Customer marked verified:', customer);
+          const shopifyResult = await markCustomerVerified(customer);
+          const email = shopifyResult?.email || null;
+          logEvent({ type: 'verification', status: 'ok', detail: `Customer verified via callback — number ${shopifyResult?.verifiedNumber}`, customerId: customer, email });
+          console.log('[Callback] ✅ Customer marked verified:', customer, '| number:', shopifyResult?.verifiedNumber);
           if (email) await sendVerificationResultEmail({ customerId: customer, email, status: 'verified' }).catch(() => {});
         } else {
+          const customerData = await getCustomer(customer).catch(() => null);
+          const email = customerData?.email || null;
           logEvent({ type: 'verification', status: 'warn', detail: 'Customer failed verification (callback poll)', customerId: customer, email });
           console.log('[Callback] ❌ Verification failed for:', customer);
           if (email) await sendVerificationResultEmail({ customerId: customer, email, status: 'failed' }).catch(() => {});
@@ -356,11 +352,17 @@ function determineVerificationSuccess(payload, globalResult, facialResult, liven
   }
 
   // Method 2: globalResult indicates success
-  // SUMA/VeriDocID sends globalResult: 'Ok' on success
-  if (globalResult) {
+  // SUMA/VeriDocID sends globalResult: true (boolean) or 'Ok' (string) on success
+  if (globalResult !== undefined && globalResult !== null) {
+    // Boolean true = verified
+    if (globalResult === true) return true;
+    if (globalResult === false) return false;
     const resultStr = typeof globalResult === 'string' ? globalResult.toLowerCase() : '';
-    if (resultStr === 'ok' || resultStr === 'passed' || resultStr === 'approved' || resultStr === 'verified') {
+    if (resultStr === 'ok' || resultStr === 'passed' || resultStr === 'approved' || resultStr === 'verified' || resultStr === 'true') {
       return true;
+    }
+    if (resultStr === 'failed' || resultStr === 'rejected' || resultStr === 'false') {
+      return false;
     }
     // If globalResult is an object, check its status/result field
     if (typeof globalResult === 'object') {
