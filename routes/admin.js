@@ -140,8 +140,8 @@ router.get('/status.json', (req, res) => {
   res.json({ stats: getStats(), events: getEvents() });
 });
 
-// POST /admin/resend?customerId=123&email=x@y.com&firstName=X&lastName=Y
-// Manually trigger verification flow for a customer
+// POST /admin/resend?customerId=123&email=x@y.com
+// Manually trigger verification flow for a customer (tries full flow, falls back to profile email)
 router.post('/resend', async (req, res) => {
   const { customerId, email, firstName, lastName } = req.query;
   if (!customerId || !email) return res.status(400).json({ error: 'customerId and email required' });
@@ -150,7 +150,17 @@ router.post('/resend', async (req, res) => {
     await startVerificationFlow({ id: customerId, email, first_name: firstName || '', last_name: lastName || '' });
     res.json({ ok: true, message: `Verification email sent to ${email}` });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    // VeriDoc down — fall back to profile completion email
+    console.warn('[Admin Resend] VeriDoc failed, sending profile email instead:', err.message);
+    try {
+      const { sendProfileCompleteEmail } = await import('../services/email.js');
+      const appBaseUrl = process.env.APP_BASE_URL || 'https://connabis-verification-system.onrender.com';
+      const formUrl = `${appBaseUrl}/profile/complete?cid=${customerId}&email=${encodeURIComponent(email)}`;
+      await sendProfileCompleteEmail({ to: email, formUrl });
+      res.json({ ok: true, message: `VeriDoc unavailable — profile completion email sent to ${email}`, fallback: true });
+    } catch (emailErr) {
+      res.status(500).json({ error: err.message, emailError: emailErr.message });
+    }
   }
 });
 
