@@ -1,7 +1,7 @@
 // routes/suma.js — VeriDocID Webhook & Callback Handlers
 import express from 'express';
 import { sendVerificationResultEmail, sendDebugAdminEmail, sendErrorAlertEmail } from '../services/email.js';
-import { markCustomerVerified, searchCustomerByEmail } from '../services/shopify.js';
+import { markCustomerVerified, searchCustomerByEmail, getCustomerMetafield, getCustomer } from '../services/shopify.js';
 import { checkVerificationStatus, getVerificationResults } from '../services/suma.js';
 import { logEvent } from '../services/logger.js';
 
@@ -9,9 +9,64 @@ const router = express.Router();
 
 // ─── User redirect after completing VeriDocID verification ───────────
 // VeriDocID redirects user here via redirect_url set in createVerification
-router.get('/callback', (req, res) => {
+router.get('/callback', async (req, res) => {
   const { status, customer } = req.query;
   console.log('[VeriDocID Callback] User redirected. Status:', status, '| Customer:', customer);
+
+  // Async: poll VeriDocID for results and write to Shopify (don't block the response)
+  if ((status === 'success' || status === 'completed') && customer) {
+    (async () => {
+      try {
+        console.log('[Callback] Fetching UUID metafield for customer:', customer);
+        const uuid = await getCustomerMetafield(customer, 'verification_uuid');
+        if (!uuid) {
+          console.warn('[Callback] No verification_uuid metafield found for customer:', customer);
+          return;
+        }
+        console.log('[Callback] Got UUID:', uuid, '— polling status...');
+
+        // Poll up to 10 times with 3s delay waiting for VeriDocID to finish processing
+        let verificationStatus = null;
+        for (let i = 0; i < 10; i++) {
+          verificationStatus = await checkVerificationStatus(uuid);
+          console.log('[Callback] Poll', i + 1, '— status:', verificationStatus);
+          if (verificationStatus === 'Checked') break;
+          await new Promise(r => setTimeout(r, 3000));
+        }
+
+        if (verificationStatus !== 'Checked') {
+          console.warn('[Callback] VeriDocID not yet Checked after polling — will rely on webhook. Status:', verificationStatus);
+          return;
+        }
+
+        const results = await getVerificationResults(uuid);
+        const globalResult = results?.globalResult ?? results?.GlobalResult ?? results?.result ?? results?.Result;
+        const isVerified = globalResult === true || globalResult === 'true' || globalResult === 1 ||
+          String(globalResult).toLowerCase() === 'ok' || String(globalResult).toLowerCase() === 'pass';
+
+        console.log('[Callback] GlobalResult:', globalResult, '| isVerified:', isVerified);
+
+        // Get customer email for Shopify update
+        const customerData = await getCustomer(customer).catch(() => null);
+        const email = customerData?.email || null;
+        const idNumber = customerData?.company || customerData?.default_address?.company || null;
+
+        if (isVerified) {
+          await markCustomerVerified({ customerId: customer, email, idNumber });
+          logEvent({ type: 'verification', status: 'ok', detail: `Customer verified via callback polling — number ${idNumber}`, customerId: customer, email });
+          console.log('[Callback] ✅ Customer marked verified:', customer);
+          if (email) await sendVerificationResultEmail({ customerId: customer, email, status: 'verified' }).catch(() => {});
+        } else {
+          logEvent({ type: 'verification', status: 'warn', detail: 'Customer failed verification (callback poll)', customerId: customer, email });
+          console.log('[Callback] ❌ Verification failed for:', customer);
+          if (email) await sendVerificationResultEmail({ customerId: customer, email, status: 'failed' }).catch(() => {});
+        }
+      } catch (err) {
+        console.error('[Callback] Error processing results:', err.message);
+        logEvent({ type: 'error', status: 'error', detail: `Callback result processing failed: ${err.message}`, customerId: customer });
+      }
+    })();
+  }
 
   if (status === 'success' || status === 'completed') {
     res.send(`

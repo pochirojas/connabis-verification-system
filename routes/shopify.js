@@ -137,6 +137,8 @@ export async function startVerificationFlow({ id, email, first_name, last_name }
     const verification = await createSumaVerification({ customerId: id, email, firstName: first_name, lastName: last_name });
     verificationUrl = verification.verification_url;
     console.log('[Flow] Session created:', verification.id);
+    // Store UUID so callback can poll results if webhook doesn't fire
+    await setCustomerMetafield(id, 'verification_uuid', verification.id).catch(() => {});
   }
 
   // Step 2: Mark as sent so customers/update doesn't reprocess
