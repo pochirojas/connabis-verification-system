@@ -253,7 +253,19 @@ router.post('/webhook', express.json(), async (req, res) => {
       logEvent({ type: 'verification', status: 'warn', detail: 'No customer ID in VeriDocID payload', email });
     }
 
-    // Step 2: Send legacy admin notification
+    // Step 2: Ensure we have the customer email before sending notification
+    if (!email && customerId) {
+      try {
+        const fetched = await getCustomer(customerId);
+        if (fetched?.email) email = fetched.email;
+        if (!customerName && fetched) customerName = [fetched.first_name, fetched.last_name].filter(Boolean).join(' ') || null;
+        console.log('[VeriDocID Webhook] Fetched email from Shopify:', email);
+      } catch (e) {
+        console.warn('[VeriDocID Webhook] Could not fetch customer email:', e.message);
+      }
+    }
+
+    // Step 3: Send admin notification
     console.log('[VeriDocID Webhook] Sending admin notification...');
     await sendVerificationResultEmail({
       customerId: customerId || verificationId,
