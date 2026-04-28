@@ -44,15 +44,16 @@ router.get('/callback', async (req, res) => {
         const globalResult = results?.globalResult ?? results?.GlobalResult;
         console.log('[Callback] GlobalResult:', globalResult, '| isVerified:', isVerified);
 
+        // Fetch email once, used for both verified and failed paths
+        const customerData = await getCustomer(customer).catch(() => null);
+        const email = customerData?.email || null;
+
         if (isVerified) {
           const shopifyResult = await markCustomerVerified(customer);
-          const email = shopifyResult?.email || null;
           logEvent({ type: 'verification', status: 'ok', detail: `Customer verified via callback — number ${shopifyResult?.verifiedNumber}`, customerId: customer, email });
           console.log('[Callback] ✅ Customer marked verified:', customer, '| number:', shopifyResult?.verifiedNumber);
           if (email) await sendVerificationResultEmail({ customerId: customer, email, status: 'verified' }).catch(() => {});
         } else {
-          const customerData = await getCustomer(customer).catch(() => null);
-          const email = customerData?.email || null;
           logEvent({ type: 'verification', status: 'warn', detail: 'Customer failed verification (callback poll)', customerId: customer, email });
           console.log('[Callback] ❌ Verification failed for:', customer);
           if (email) await sendVerificationResultEmail({ customerId: customer, email, status: 'failed' }).catch(() => {});
@@ -172,7 +173,6 @@ router.post('/webhook', express.json(), async (req, res) => {
 
   try {
     const payload = req.body;
-    logEvent({ type: 'verification', status: 'ok', detail: 'VeriDocID webhook received', extra: { keys: Object.keys(payload) } });
 
     // VeriDocID payloads can vary — extract what we can
     // The "id" field we set during createVerification is "shopify_<customerId>"
@@ -187,6 +187,9 @@ router.post('/webhook', express.json(), async (req, res) => {
     }
     console.log('[VeriDocID Webhook] Extracted — verificationId:', verificationId, '| externalId:', externalId, '| customerId:', customerId);
 
+    // Log receipt now that we have customerId extracted
+    logEvent({ type: 'verification', status: 'ok', detail: 'VeriDocID webhook received', customerId: customerId || null, extra: { keys: Object.keys(payload) } });
+
     // Try to determine verification result from payload
     // VeriDocID results contain globalResult, facialVerification, livenessTest, etc.
     const globalResult = payload.globalResult || payload.global_result || payload.result;
@@ -199,9 +202,6 @@ router.post('/webhook', express.json(), async (req, res) => {
     // Extract email: check payload.email, or identifier if it looks like an email
     let email = payload.email || null;
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!email && typeof identifier === 'string' && emailRegex.test(identifier)) {
-      email = identifier;
-    }
     if (!email && typeof verificationId === 'string' && emailRegex.test(verificationId)) {
       email = verificationId;
     }
