@@ -86,15 +86,27 @@ export async function createSumaVerification({ customerId, email, firstName, las
 
   console.log('[VeriDocID] createVerification payload:', JSON.stringify(payload, null, 2));
 
-  const res = await fetch(`${VERIDOCID_BASE}/id/v3/createverification`, {
+  const doRequest = async (tok) => fetch(`${VERIDOCID_BASE}/id/v3/createverification`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`,
+      'Authorization': `Bearer ${tok}`,
       'x-api-key': apiKey
     },
     body: JSON.stringify(payload)
   });
+
+  let res = await doRequest(token);
+
+  // If token-related error, force-refresh token and retry once
+  if (!res.ok && (res.status === 400 || res.status === 401)) {
+    const errText = await res.text();
+    console.warn('[VeriDocID] createVerification failed, forcing token refresh and retrying. Error:', errText);
+    cachedToken = null;
+    tokenExpiresAt = 0;
+    const freshToken = await getAccessToken();
+    res = await doRequest(freshToken);
+  }
 
   if (!res.ok) {
     const error = await res.text();

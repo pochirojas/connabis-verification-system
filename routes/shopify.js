@@ -29,12 +29,28 @@ router.post('/customer-created', async (req, res) => {
     return res.status(401).send('Unauthorized');
   }
 
-  const { id, email, first_name, last_name, phone } = req.body;
+  let { id, email, first_name, last_name, phone } = req.body;
   const company = req.body.company || req.body.default_address?.company;
   console.log('[Shopify] Customer ID:', id, '| Email:', email, '| Phone:', phone || 'MISSING');
 
+  // Some social logins (Google etc.) omit email from webhook — fetch from API
+  if (!email && id) {
+    console.warn('[Shopify] No email in webhook payload — fetching from Shopify API for customer:', id);
+    try {
+      const fetched = await getCustomer(id);
+      if (fetched?.email) {
+        email = fetched.email;
+        if (!first_name) first_name = fetched.first_name;
+        if (!last_name) last_name = fetched.last_name;
+        console.log('[Shopify] Fetched email from API:', email);
+      }
+    } catch (fetchErr) {
+      console.error('[Shopify] Failed to fetch customer from API:', fetchErr.message);
+    }
+  }
+
   if (!email) {
-    console.error('[Shopify] No email — cannot proceed');
+    console.error('[Shopify] No email found for customer', id, '— cannot proceed');
     return res.status(200).send('ok');
   }
 
