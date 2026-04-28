@@ -176,7 +176,7 @@ export async function checkVerificationStatus(uuid) {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${token}`
     },
-    body: JSON.stringify({ identifier: uuid })
+    body: JSON.stringify({ uuid })
   });
 
   if (!res.ok) {
@@ -203,7 +203,7 @@ export async function getVerificationResults(uuid) {
       'Authorization': `Bearer ${token}`
     },
     body: JSON.stringify({
-      identifier: uuid,
+      uuid,
       includeImages: false,
       includeVideo: false,
       includeProofAdress: false

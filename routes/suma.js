@@ -180,15 +180,16 @@ router.post('/webhook', express.json(), async (req, res) => {
 
     // VeriDocID payloads can vary — extract what we can
     // The "id" field we set during createVerification is "shopify_<customerId>"
-    const verificationId = payload.uuid || payload.id || payload.verification_id;
-    const identifier = payload.identifier || payload.externalId || payload.external_id || payload.id || '';
-    const externalId = payload.externalId || payload.external_id || payload.id || '';
+    const verificationId = payload.uuid || payload.identifier || payload.verification_id;
+    // Our custom id is in payload.id as "shopify_<customerId>"
+    const externalId = payload.id || payload.externalId || payload.external_id || '';
 
     // Extract customer ID from our external_id format: "shopify_<id>"
     let customerId = null;
     if (typeof externalId === 'string' && externalId.startsWith('shopify_')) {
       customerId = externalId.replace('shopify_', '');
     }
+    console.log('[VeriDocID Webhook] Extracted — verificationId:', verificationId, '| externalId:', externalId, '| customerId:', customerId);
 
     // Try to determine verification result from payload
     // VeriDocID results contain globalResult, facialVerification, livenessTest, etc.
