@@ -232,7 +232,19 @@ router.post('/webhook', express.json(), async (req, res) => {
       globalResult: typeof globalResult === 'object' ? JSON.stringify(globalResult) : globalResult
     });
 
-    // Step 1: If verified and we have a customer ID, mark verified in Shopify
+    // Step 1: Ensure we have email + name before logging or notifying
+    if (!email && customerId) {
+      try {
+        const fetched = await getCustomer(customerId);
+        if (fetched?.email) email = fetched.email;
+        if (!customerName && fetched) customerName = [fetched.first_name, fetched.last_name].filter(Boolean).join(' ') || null;
+        console.log('[VeriDocID Webhook] Fetched email from Shopify:', email);
+      } catch (e) {
+        console.warn('[VeriDocID Webhook] Could not fetch customer email:', e.message);
+      }
+    }
+
+    // Step 2: If verified and we have a customer ID, mark verified in Shopify
     let verifiedNumber = null;
     if (customerId && isVerified) {
       try {
@@ -251,18 +263,6 @@ router.post('/webhook', express.json(), async (req, res) => {
     } else {
       console.log('[VeriDocID Webhook] No customer ID found in payload — admin notified only');
       logEvent({ type: 'verification', status: 'warn', detail: 'No customer ID in VeriDocID payload', email });
-    }
-
-    // Step 2: Ensure we have the customer email before sending notification
-    if (!email && customerId) {
-      try {
-        const fetched = await getCustomer(customerId);
-        if (fetched?.email) email = fetched.email;
-        if (!customerName && fetched) customerName = [fetched.first_name, fetched.last_name].filter(Boolean).join(' ') || null;
-        console.log('[VeriDocID Webhook] Fetched email from Shopify:', email);
-      } catch (e) {
-        console.warn('[VeriDocID Webhook] Could not fetch customer email:', e.message);
-      }
     }
 
     // Step 3: Send admin notification
