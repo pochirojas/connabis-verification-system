@@ -45,7 +45,10 @@ router.get('/complete', async (req, res) => {
 
 // POST /profile/complete — Handle form submission
 router.post('/complete', express.urlencoded({ extended: true }), async (req, res) => {
-  const { cid, email, phone, id_type, id_number, address, address2, city, province, zip, birth_date } = req.body;
+  const { cid, email, phone, id_type: id_type_raw, id_type_otro, id_number, address, address2, city, province, zip, birth_date } = req.body;
+
+  // Resolve "Otro" to the custom text value
+  const id_type = id_type_raw === 'OTRO' ? (id_type_otro?.trim() || 'OTRO') : id_type_raw;
 
   console.log('[Profile] Form submitted for customer:', cid, '| Email:', email);
 
@@ -59,7 +62,8 @@ router.post('/complete', express.urlencoded({ extended: true }), async (req, res
 
   const missing = [];
   if (!cid || !email) return res.status(400).send(errorPage('Enlace inválido. Por favor contacta a connabisco@gmail.com'));
-  if (!id_type) missing.push('Tipo de documento');
+  if (!id_type_raw) missing.push('Tipo de documento');
+  if (id_type_raw === 'OTRO' && !id_type_otro?.trim()) missing.push('Especifica el tipo de documento');
   if (!id_number?.trim()) missing.push('Número de documento');
   if (!normalizedPhone || normalizedPhone === '+57') missing.push('Celular');
   if (!birth_date) missing.push('Fecha de nacimiento');
@@ -247,13 +251,18 @@ function formPage({ cid, email, customer, error = null }) {
             <div class="field">
               <label>Tipo de Doc. <span class="req">*</span></label>
               <div class="select-wrap">
-                <select name="id_type" required>
+                <select name="id_type" required id="id_type_select"
+                  onchange="document.getElementById('id_type_otro_wrap').style.display=this.value==='OTRO'?'block':'none';document.getElementById('id_type_otro_input').required=this.value==='OTRO';">
                   <option value="">Seleccionar</option>
                   <option value="CC">C.C. &mdash; Cédula Ciudadanía</option>
                   <option value="CE">C.E. &mdash; Cédula Extranjería</option>
                   <option value="PA">PA &mdash; Pasaporte</option>
-                  <option value="TI">T.I. &mdash; Tarjeta Identidad</option>
+                  <option value="OTRO">Otro</option>
                 </select>
+                <div id="id_type_otro_wrap" style="display:none;margin-top:0.6rem;">
+                  <input type="text" id="id_type_otro_input" name="id_type_otro" placeholder="Especifica el tipo de documento"
+                    style="width:100%;box-sizing:border-box;">
+                </div>
               </div>
             </div>
             <div class="field">

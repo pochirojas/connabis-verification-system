@@ -20,11 +20,14 @@ router.get('/', (req, res) => {
 router.post('/', async (req, res) => {
   const {
     first_name, last_name, email, password, password_confirm,
-    phone, id_type, id_number,
-    birth_date, purchase_intent,
+    phone, id_type: id_type_raw, id_type_otro,
+    id_number, birth_date, purchase_intent,
     address, address2, city, province, zip,
     privacy_policy
   } = req.body;
+
+  // Resolve "Otro" to the custom text value
+  const id_type = id_type_raw === 'OTRO' ? (id_type_otro?.trim() || 'OTRO') : id_type_raw;
 
   // Normalize phone: strip whitespace/dashes, prepend +57 if not already international
   const normalizePhone = (p = '') => {
@@ -40,7 +43,8 @@ router.post('/', async (req, res) => {
   if (!last_name?.trim()) missing.push('Apellido');
   if (!email?.trim()) missing.push('Correo');
   if (!password) missing.push('Contraseña');
-  if (!id_type) missing.push('Tipo de documento');
+  if (!id_type_raw) missing.push('Tipo de documento');
+  if (id_type_raw === 'OTRO' && !id_type_otro?.trim()) missing.push('Especifica el tipo de documento');
   if (!id_number?.trim()) missing.push('Número de documento');
   if (!birth_date) missing.push('Fecha de nacimiento');
   if (!normalizedPhone || normalizedPhone === '+57') missing.push('Celular');
@@ -357,13 +361,20 @@ function registerPage({ error = null, prefill = {} } = {}) {
             <div class="field">
               <label>Tipo de Doc. <span class="req">*</span></label>
               <div class="select-wrap">
-                <select name="id_type" required>
+                <select name="id_type" required id="id_type_select"
+                  onchange="document.getElementById('id_type_otro_wrap').style.display=this.value==='OTRO'?'block':'none';document.getElementById('id_type_otro_input').required=this.value==='OTRO';">
                   <option value="">Seleccionar</option>
                   <option value="CC" ${sel('id_type','CC')}>C.C. — Cédula Ciudadanía</option>
                   <option value="CE" ${sel('id_type','CE')}>C.E. — Cédula Extranjería</option>
                   <option value="PA" ${sel('id_type','PA')}>PA — Pasaporte</option>
-                  <option value="TI" ${sel('id_type','TI')}>T.I. — Tarjeta Identidad</option>
+                  <option value="OTRO" ${sel('id_type','OTRO')}>Otro</option>
                 </select>
+                <div id="id_type_otro_wrap" style="display:${prefill?.id_type==='OTRO'?'block':'none'};margin-top:0.6rem;">
+                  <input type="text" id="id_type_otro_input" name="id_type_otro" placeholder="Especifica el tipo de documento"
+                    value="${prefill?.id_type_otro||''}"
+                    ${prefill?.id_type==='OTRO'?'required':''}
+                    style="width:100%;box-sizing:border-box;">
+                </div>
               </div>
             </div>
             <div class="field">
