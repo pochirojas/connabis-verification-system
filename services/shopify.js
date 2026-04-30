@@ -261,32 +261,26 @@ export async function searchCustomerByEmail(email) {
   return { id: numericId, email: customer.email, firstName: customer.firstName, lastName: customer.lastName };
 }
 
-// Add "Verified" tag to a customer (appends to existing tags)
+// Add "Verified" tag and remove "Not Verified" tag in one atomic PUT
 export async function addVerifiedTag(customerId) {
-  console.log('[Shopify] Adding Verified tag to customer:', customerId);
+  console.log('[Shopify] Setting Verified tag (removing Not Verified) for customer:', customerId);
 
-  // First fetch current tags so we don't overwrite them
   const { customer } = await shopifyAdminFetch(`/customers/${customerId}.json`);
-  const currentTags = customer?.tags || '';
+  const tagsArray = (customer?.tags || '').split(',').map(t => t.trim()).filter(Boolean);
 
-  // Check if already tagged
-  const tagsArray = currentTags.split(',').map(t => t.trim()).filter(Boolean);
-  if (tagsArray.some(t => t.toLowerCase() === 'verified')) {
-    console.log('[Shopify] Customer already has Verified tag, skipping');
-    return { customer };
-  }
-
-  // Append the new tag
-  const newTags = currentTags ? `${currentTags}, ${VERIFIED_TAG}` : VERIFIED_TAG;
+  // Strip both tags first, then add Verified — single write prevents race condition
+  const cleaned = tagsArray.filter(
+    t => t.toLowerCase() !== VERIFIED_TAG.toLowerCase() &&
+         t.toLowerCase() !== NOT_VERIFIED_TAG.toLowerCase()
+  );
+  const newTags = [...cleaned, VERIFIED_TAG].join(', ');
 
   const data = await shopifyAdminFetch(`/customers/${customerId}.json`, {
     method: 'PUT',
-    body: JSON.stringify({
-      customer: { id: customerId, tags: newTags },
-    }),
+    body: JSON.stringify({ customer: { id: customerId, tags: newTags } }),
   });
 
-  console.log('[Shopify] Verified tag added successfully');
+  console.log('[Shopify] Tags updated — Verified added, Not Verified removed. Final:', newTags);
   return data;
 }
 
@@ -428,9 +422,8 @@ export async function markCustomerVerified(customerId) {
     const existing = await getCustomerMetafield(customerId, 'verified_number');
     if (existing) {
       console.log('[Shopify] Customer', customerId, 'already has verified_number:', existing, '— skipping duplicate assignment');
-      // Still ensure tag is present
+      // Ensure Verified tag is set and Not Verified removed (atomic)
       await addVerifiedTag(customerId).catch(() => {});
-      await removeTag(customerId, NOT_VERIFIED_TAG).catch(() => {});
       return { verifiedNumber: existing, customerId };
     }
   } catch (e) {
@@ -479,12 +472,7 @@ export async function markCustomerVerified(customerId) {
     console.error('[Shopify] Failed to add verification note:', error.message);
   }
 
-  // Step 5: Remove 'Not Verified' tag if present
-  try {
-    await removeTag(customerId, NOT_VERIFIED_TAG);
-  } catch (error) {
-    console.error('[Shopify] Failed to remove Not Verified tag:', error.message);
-  }
+  // Step 5: Not Verified tag removal is now handled atomically inside addVerifiedTag (Step 2)
 
   return { verifiedNumber, customerId };
 }

@@ -5,7 +5,8 @@ import { createSumaVerification } from '../services/suma.js';
 import {
   sendVerificationEmail,
   sendProfileCompleteEmail,
-  sendErrorAlertEmail
+  sendErrorAlertEmail,
+  sendNewRegistrationEmail
 } from '../services/email.js';
 import {
   isCustomerAlreadyVerified,
@@ -59,6 +60,28 @@ router.post('/customer-created', async (req, res) => {
 
   try {
     logEvent({ type: 'webhook', status: 'ok', detail: 'Customer created webhook received', customerId: id, email });
+
+    // ─── Registration notification email ──────────────────────────
+    // Fetch full customer to get address/ID fields for the email
+    try {
+      const fullCustomer = await getCustomer(id).catch(() => null);
+      const addr = fullCustomer?.default_address || {};
+      sendNewRegistrationEmail({
+        firstName: first_name,
+        lastName: last_name,
+        email,
+        phone: phone || fullCustomer?.phone,
+        idType: fullCustomer?.company ? (req.body.note || addr.company || 'N/A') : 'N/A',
+        idNumber: fullCustomer?.company || addr.company || 'N/A',
+        birthDate: req.body.birth_date || 'N/A',
+        address: addr.address1 || 'N/A',
+        city: addr.city || 'N/A',
+        province: addr.province || 'N/A',
+        customerId: id,
+      }).catch(e => console.error('[Flow] Registration email failed (non-critical):', e.message));
+    } catch (regEmailErr) {
+      console.error('[Flow] Registration email setup failed:', regEmailErr.message);
+    }
 
     // ─── Step 0: Duplicate check ───────────────────────────────────
     const [alreadyById, alreadyByEmail] = await Promise.all([

@@ -168,6 +168,7 @@ export async function sendDebugAdminEmail({
     from,
     to: 'connabisco@gmail.com',
     subject,
+    headers: { 'X-Connabis-Category': 'verificacion' },  // Gmail filter → label VERIFICACIONES
     html: body
   });
 
@@ -194,6 +195,7 @@ export async function sendVerificationResultEmail({ customerId, email, status, r
     from,
     to: process.env.NOTIFY_EMAIL || 'connabisco@gmail.com',
     subject: `${statusEmoji} Customer Verification ${status.toUpperCase()} - ${email}`,
+    headers: { 'X-Connabis-Category': 'verificacion' },  // Gmail filter → label VERIFICACIONES
     html: `
       <div style="font-family: monospace; max-width: 600px; margin: 0 auto;">
         <!-- Status Banner -->
@@ -353,6 +355,59 @@ export async function sendConsentEmail({ to }) {
 
   console.log('[Email] Consent email accepted, ID:', data?.id);
   return data;
+}
+
+// Send new registration notification to connabisco@gmail.com
+// Gmail filter: create a filter for "X-Connabis-Category: registro" → apply label "REGISTRO(S)"
+export async function sendNewRegistrationEmail({ firstName, lastName, email, phone, idType, idNumber, birthDate, address, city, province, customerId }) {
+  const from = getFromEmail();
+  const resend = getResendClient();
+
+  const rows = [
+    ['Nombre', `${firstName || ''} ${lastName || ''}`.trim() || 'N/A'],
+    ['Email', email || 'N/A'],
+    ['Celular', phone || 'N/A'],
+    ['Tipo Doc.', idType || 'N/A'],
+    ['Número Doc.', idNumber || 'N/A'],
+    ['Fecha Nacimiento', birthDate || 'N/A'],
+    ['Dirección', address || 'N/A'],
+    ['Ciudad', city || 'N/A'],
+    ['Departamento', province || 'N/A'],
+    ['Customer ID', customerId || 'N/A'],
+    ['Timestamp', new Date().toLocaleString('es-CO', { timeZone: 'America/Bogota' })],
+  ];
+
+  const tableRows = rows.map(([k, v]) =>
+    `<tr><td style="padding:6px 10px;font-weight:600;width:160px;color:#444;border-bottom:1px solid #eee;">${k}:</td><td style="padding:6px 10px;border-bottom:1px solid #eee;color:#222;">${v}</td></tr>`
+  ).join('');
+
+  const { data, error } = await resend.emails.send({
+    from,
+    to: 'connabisco@gmail.com',
+    subject: `Nuevo Registro: ${firstName || ''} ${lastName || ''} &lt;${email}&gt;`,
+    headers: {
+      'X-Connabis-Category': 'registro',     // Gmail filter on this → label REGISTRO(S)
+    },
+    html: `
+      <div style="font-family:Arial,sans-serif;max-width:620px;margin:0 auto;background:#fff;border:1px solid #e0e0e0;border-radius:6px;overflow:hidden;">
+        <div style="background:#2d6a4f;padding:18px 24px;">
+          <h2 style="color:#fff;margin:0;font-size:18px;">&#128226; Nuevo Registro — Connabis</h2>
+        </div>
+        <div style="padding:20px 24px;">
+          <table style="width:100%;border-collapse:collapse;font-size:14px;">${tableRows}</table>
+        </div>
+        <div style="padding:12px 24px;background:#f5f5f5;text-align:center;">
+          <a href="https://connabis.myshopify.com/admin/customers/${customerId}" style="color:#2d6a4f;font-size:13px;text-decoration:none;">Ver cliente en Shopify Admin &rarr;</a>
+        </div>
+      </div>
+    `
+  });
+
+  if (error) {
+    console.error('[Email] Registration notification failed:', JSON.stringify(error));
+  } else {
+    console.log('[Email] Registration notification sent, ID:', data?.id);
+  }
 }
 
 // Send error alert to admin when any flow fails
