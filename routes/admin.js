@@ -183,8 +183,10 @@ router.get('/customers', async (req, res) => {
     // For each, get their verified_number metafield
     const results = await Promise.all(customers.map(async (c) => {
       try {
-        const mf = await shopifyAdminFetch(`/customers/${c.id}/metafields.json?namespace=custom&key=verified_number`);
-        const verifiedNumber = mf?.metafields?.[0]?.value || null;
+        // Try both namespaces — older entries may be under 'custom', newer under default namespace
+        const mf = await shopifyAdminFetch(`/customers/${c.id}/metafields.json`);
+        const verifiedMf = (mf?.metafields || []).find(m => m.key === 'verified_number');
+        const verifiedNumber = verifiedMf?.value || null;
         return { ...c, verified_number: verifiedNumber };
       } catch { return { ...c, verified_number: null }; }
     }));
