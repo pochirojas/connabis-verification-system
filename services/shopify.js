@@ -457,7 +457,7 @@ export async function markCustomerVerified(customerId) {
   }
 
   // Step 4: Add verification note to customer profile
-  // Format: "CC 1005289529 (Users ID) - Verified Number: 300 - Verified Automatically by Motas"
+  // Format: "CC 1005289529 Users ID - Verified Number: 300 - Verified Automatically by Motas"
   // ID number is stored in company AND default_address.company
   try {
     const customer = await shopifyAdminFetch(`/customers/${customerId}.json?fields=id,company,default_address`)
@@ -466,7 +466,7 @@ export async function markCustomerVerified(customerId) {
       customer?.default_address?.company ||
       'N/A';
     console.log('[Shopify] ID number for note:', idNumber, '| company:', customer?.company, '| address company:', customer?.default_address?.company);
-    const noteText = `CC ${idNumber} (Users ID) - Verified Number: ${verifiedNumber} - Verified Automatically by Motas`;
+    const noteText = `CC ${idNumber} Users ID - Verified Number: ${verifiedNumber} - Verified Automatically by Motas`;
     await addCustomerNote(customerId, noteText);
   } catch (error) {
     console.error('[Shopify] Failed to add verification note:', error.message);
