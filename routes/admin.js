@@ -142,6 +142,19 @@ router.get('/status.json', (req, res) => {
 
 // POST /admin/resend?customerId=123&email=x@y.com
 // Manually trigger verification flow for a customer (tries full flow, falls back to profile email)
+// POST /admin/verify?customerId=X  — manually trigger markCustomerVerified for a customer
+router.post('/verify', async (req, res) => {
+  const { customerId } = req.query;
+  if (!customerId) return res.status(400).json({ error: 'customerId required' });
+  try {
+    const { markCustomerVerified } = await import('../services/shopify.js');
+    const result = await markCustomerVerified(customerId);
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.post('/resend', async (req, res) => {
   const { customerId, email, firstName, lastName } = req.query;
   if (!customerId || !email) return res.status(400).json({ error: 'customerId and email required' });
