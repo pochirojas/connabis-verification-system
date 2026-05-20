@@ -1,6 +1,12 @@
 // routes/suma.js — VeriDocID Webhook & Callback Handlers
 import express from 'express';
 import { sendVerificationResultEmail, sendDebugAdminEmail, sendErrorAlertEmail } from '../services/email.js';
+import { generateOverrideToken } from './admin.js';
+
+const BASE_URL = process.env.RENDER_EXTERNAL_URL || 'https://connabis-verification-system.onrender.com';
+function makeOverrideUrl(customerId) {
+  return `${BASE_URL}/admin/override?token=${generateOverrideToken(customerId)}`;
+}
 import { markCustomerVerified, searchCustomerByEmail, getCustomerMetafield, getCustomer } from '../services/shopify.js';
 import { checkVerificationStatus, getVerificationResults } from '../services/suma.js';
 import { logEvent } from '../services/logger.js';
@@ -56,7 +62,7 @@ router.get('/callback', async (req, res) => {
         } else {
           logEvent({ type: 'verification', status: 'warn', detail: 'Customer failed verification (callback poll)', customerId: customer, email });
           console.log('[Callback] ❌ Verification failed for:', customer);
-          if (email) await sendVerificationResultEmail({ customerId: customer, email, status: 'failed' }).catch(() => {});
+          if (email) await sendVerificationResultEmail({ customerId: customer, email, status: 'failed', overrideUrl: makeOverrideUrl(customer) }).catch(() => {});
         }
       } catch (err) {
         console.error('[Callback] Error processing results:', err.message);
@@ -271,7 +277,8 @@ router.post('/webhook', express.json(), async (req, res) => {
       customerId: customerId || verificationId,
       email: email || 'unknown',
       status: isVerified ? 'verified' : 'failed',
-      reason: isVerified ? null : extractFailureReason(payload)
+      reason: isVerified ? null : extractFailureReason(payload),
+      overrideUrl: (!isVerified && customerId) ? makeOverrideUrl(customerId) : null
     });
     console.log('[VeriDocID Webhook] Admin notification sent');
 
@@ -335,7 +342,8 @@ router.get('/check/:uuid', async (req, res) => {
         customerId: customerId || uuid,
         email: results.email || 'unknown',
         status: isVerified ? 'verified' : 'failed',
-        reason: isVerified ? null : extractFailureReason(results)
+        reason: isVerified ? null : extractFailureReason(results),
+        overrideUrl: (!isVerified && customerId) ? makeOverrideUrl(customerId) : null
       });
 
       res.json({ uuid, status, verified: isVerified, results: results });

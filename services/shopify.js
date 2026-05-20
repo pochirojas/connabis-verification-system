@@ -71,7 +71,7 @@ async function getAccessToken() {
 // ─── API Helpers ─────────────────────────────────────────────────
 
 // Make authenticated REST request to Shopify Admin API
-async function shopifyAdminFetch(endpoint, options = {}) {
+export async function shopifyAdminFetch(endpoint, options = {}) {
   const shop = process.env.SHOPIFY_STORE_URL;
   const token = await getAccessToken();
 

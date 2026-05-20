@@ -1,8 +1,38 @@
 // routes/admin.js — Admin monitoring dashboard
 import express from 'express';
+import { createHmac, timingSafeEqual } from 'crypto';
 import { getEvents, getStats } from '../services/logger.js';
 
 const router = express.Router();
+
+// ─── Override token helpers ──────────────────────────────────────────────────
+const OVERRIDE_SECRET = process.env.OVERRIDE_SECRET || 'connabis-override-secret-2026';
+const OVERRIDE_TTL_MS = 48 * 60 * 60 * 1000; // 48 hours
+
+export function generateOverrideToken(customerId) {
+  const expires = Date.now() + OVERRIDE_TTL_MS;
+  const payload = `${customerId}:${expires}`;
+  const sig = createHmac('sha256', OVERRIDE_SECRET).update(payload).digest('hex');
+  // Base64url-encode so it's safe in email links
+  return Buffer.from(`${payload}:${sig}`).toString('base64url');
+}
+
+function verifyOverrideToken(token) {
+  try {
+    const decoded = Buffer.from(token, 'base64url').toString('utf8');
+    const parts = decoded.split(':');
+    if (parts.length !== 3) return null;
+    const [customerId, expires, sig] = parts;
+    if (Date.now() > Number(expires)) return null; // expired
+    const payload = `${customerId}:${expires}`;
+    const expected = createHmac('sha256', OVERRIDE_SECRET).update(payload).digest('hex');
+    const sigBuf = Buffer.from(sig, 'hex');
+    const expBuf = Buffer.from(expected, 'hex');
+    if (sigBuf.length !== expBuf.length) return null;
+    if (!timingSafeEqual(sigBuf, expBuf)) return null;
+    return customerId;
+  } catch { return null; }
+}
 
 // GET /admin/status — HTML dashboard
 router.get('/status', (req, res) => {
@@ -142,6 +172,69 @@ router.get('/status.json', (req, res) => {
 
 // POST /admin/resend?customerId=123&email=x@y.com
 // Manually trigger verification flow for a customer (tries full flow, falls back to profile email)
+// GET /admin/customers — recent customers with tags + metafields for QA
+router.get('/customers', async (req, res) => {
+  try {
+    const { shopifyAdminFetch } = await import('../services/shopify.js');
+    // Get last 50 customers ordered by creation date
+    const data = await shopifyAdminFetch('/customers.json?limit=50&order=created_at+DESC&fields=id,email,first_name,last_name,phone,tags,note,created_at,default_address');
+    const customers = data?.customers || [];
+
+    // For each, get their verified_number metafield
+    const results = await Promise.all(customers.map(async (c) => {
+      try {
+        const mf = await shopifyAdminFetch(`/customers/${c.id}/metafields.json?namespace=custom&key=verified_number`);
+        const verifiedNumber = mf?.metafields?.[0]?.value || null;
+        return { ...c, verified_number: verifiedNumber };
+      } catch { return { ...c, verified_number: null }; }
+    }));
+
+    res.json({ ok: true, count: results.length, customers: results });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /admin/override?token=X  — one-click manual verification from email link
+router.get('/override', async (req, res) => {
+  const { token } = req.query;
+  if (!token) return res.status(400).send(overridePage('error', 'Token requerido.'));
+
+  const customerId = verifyOverrideToken(token);
+  if (!customerId) return res.status(400).send(overridePage('error', 'El enlace es inválido o ya expió (válido por 48 horas).'));
+
+  try {
+    const { markCustomerVerified } = await import('../services/shopify.js');
+    const { verifiedNumber } = await markCustomerVerified(customerId);
+    console.log(`[Admin Override] Customer ${customerId} manually verified — number ${verifiedNumber}`);
+    return res.send(overridePage('ok', null, customerId, verifiedNumber));
+  } catch (err) {
+    console.error('[Admin Override] Failed:', err.message);
+    return res.status(500).send(overridePage('error', `Error al verificar: ${err.message}`));
+  }
+});
+
+function overridePage(status, message, customerId, verifiedNumber) {
+  const ok = status === 'ok';
+  return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>${ok ? 'Verificado' : 'Error'} — Connabis</title>
+  <style>
+    body{font-family:Arial,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f5f5f5;}
+    .card{background:#fff;border-radius:10px;padding:40px 48px;max-width:460px;width:100%;text-align:center;box-shadow:0 4px 20px rgba(0,0,0,.1);}
+    .icon{font-size:52px;margin-bottom:12px;}
+    h2{margin:0 0 10px;color:${ok?'#2d6a4f':'#c0392b'};}
+    p{color:#555;font-size:15px;margin:6px 0;}
+    .num{font-size:28px;font-weight:700;color:#2d6a4f;margin:16px 0;}
+    a{color:#2d6a4f;font-size:13px;}
+  </style>
+</head><body><div class="card">
+  <div class="icon">${ok?'&#9989;':'&#10060;'}</div>
+  <h2>${ok?'Cliente Verificado':'Error'}</h2>
+  ${ok ? `<p>ID: <strong>${customerId}</strong></p><div class="num">Número verificado: ${verifiedNumber}</div><a href="https://connabis.myshopify.com/admin/customers/${customerId}" target="_blank">Ver en Shopify Admin →</a>` : `<p>${message}</p>`}
+</div></body></html>`;
+}
+
 // POST /admin/verify?customerId=X  — manually trigger markCustomerVerified for a customer
 router.post('/verify', async (req, res) => {
   const { customerId } = req.query;

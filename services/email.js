@@ -182,7 +182,7 @@ export async function sendDebugAdminEmail({
 }
 
 // Send verification result notification to admin
-export async function sendVerificationResultEmail({ customerId, email, status, reason }) {
+export async function sendVerificationResultEmail({ customerId, email, status, reason, overrideUrl }) {
   const from = getFromEmail();
   console.log('[Email] Sending admin notification | From:', from);
   const resend = getResendClient();
@@ -238,9 +238,16 @@ export async function sendVerificationResultEmail({ customerId, email, status, r
         <!-- Action -->
         <div style="padding: 15px 20px; background-color: #e9ecef; text-align: center;">
           <a href="https://connabis.myshopify.com/admin/customers?query=${encodeURIComponent(email || '')}"
-             style="color: #2d6a4f; font-size: 13px;">
-            View in Shopify Admin →
+             style="color: #2d6a4f; font-size: 13px; display:block; margin-bottom: ${overrideUrl ? '14px' : '0'}">
+            Ver en Shopify Admin →
           </a>
+          ${overrideUrl ? `
+          <a href="${overrideUrl}"
+             style="display:inline-block;background:#2d6a4f;color:#fff;font-size:14px;font-weight:bold;padding:12px 28px;border-radius:6px;text-decoration:none;margin-top:4px;">
+            ✅ Verificar Manualmente
+          </a>
+          <p style="font-size:11px;color:#888;margin:8px 0 0;">Este enlace expira en 48 horas y solo puede usarse una vez.</p>
+          ` : ''}
         </div>
       </div>
     `
