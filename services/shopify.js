@@ -466,7 +466,7 @@ export async function markCustomerVerified(customerId) {
       customer?.default_address?.company ||
       'N/A';
     console.log('[Shopify] ID number for note:', idNumber, '| company:', customer?.company, '| address company:', customer?.default_address?.company);
-    const noteText = `CC ${idNumber} Users ID - Verified Number: ${verifiedNumber} - Verified Automatically by Motas`;
+    const noteText = `CC ${idNumber} - Verified Number: ${verifiedNumber} - Verified Automatically by Motas`;
     await addCustomerNote(customerId, noteText);
   } catch (error) {
     console.error('[Shopify] Failed to add verification note:', error.message);
