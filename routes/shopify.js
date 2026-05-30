@@ -21,6 +21,10 @@ import { logEvent } from '../services/logger.js';
 
 const router = express.Router();
 
+// In-memory dedup set — prevents Shopify's duplicate webhook deliveries
+// from running the verification flow twice for the same customer
+const processingCustomers = new Set();
+
 // Webhook: Customer account creation
 router.post('/customer-created', async (req, res) => {
   console.log('[Shopify] Customer created webhook received');
@@ -57,6 +61,15 @@ router.post('/customer-created', async (req, res) => {
 
   // Respond to Shopify immediately — process async
   res.status(200).send('ok');
+
+  // Dedup guard: if we're already processing this customer (duplicate webhook), skip
+  if (processingCustomers.has(String(id))) {
+    console.warn('[Shopify] Duplicate webhook for customer', id, '— ignoring');
+    return;
+  }
+  processingCustomers.add(String(id));
+  // Auto-clear after 60s so future legitimate re-registrations work
+  setTimeout(() => processingCustomers.delete(String(id)), 60_000);
 
   try {
     logEvent({ type: 'webhook', status: 'ok', detail: 'Customer created webhook received', customerId: id, email });
@@ -103,7 +116,9 @@ router.post('/customer-created', async (req, res) => {
       console.log('[Flow] 🔶 Incomplete profile detected (external/Google login)');
       logEvent({ type: 'webhook', status: 'ok', detail: 'Incomplete profile — sending profile form', customerId: id, email });
 
-      await addTag(id, 'Not Verified');
+      // Only add Not Verified if not already verified (guards against duplicate webhooks firing after verification)
+      const alreadyVerifiedNow = await isCustomerAlreadyVerified(id).catch(() => false);
+      if (!alreadyVerifiedNow) await addTag(id, 'Not Verified');
       const baseUrl = process.env.APP_BASE_URL || 'https://connabis-verification-system.onrender.com';
       const formUrl = `${baseUrl}/profile/complete?cid=${id}&email=${encodeURIComponent(email)}`;
 

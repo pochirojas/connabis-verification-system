@@ -191,7 +191,17 @@ router.post('/webhook', express.json(), async (req, res) => {
     if (typeof externalId === 'string' && externalId.startsWith('shopify_')) {
       customerId = externalId.replace('shopify_', '');
     }
+    // Also check payload.userId, payload.user_id, payload.subject as additional fallbacks
+    if (!customerId) {
+      const altId = payload.userId || payload.user_id || payload.subject || payload.clientId || payload.client_id;
+      if (typeof altId === 'string' && altId.startsWith('shopify_')) {
+        customerId = altId.replace('shopify_', '');
+      }
+    }
     console.log('[VeriDocID Webhook] Extracted — verificationId:', verificationId, '| externalId:', externalId, '| customerId:', customerId);
+    if (!customerId) {
+      console.warn('[VeriDocID Webhook] ⚠️  Could not extract customerId. Full payload keys:', Object.keys(payload), '| id field:', payload.id);
+    }
 
     // Log receipt now that we have customerId extracted
     logEvent({ type: 'verification', status: 'ok', detail: 'VeriDocID webhook received', customerId: customerId || null, extra: { keys: Object.keys(payload) } });
