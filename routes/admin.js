@@ -7,7 +7,7 @@ const router = express.Router();
 
 // ─── Override token helpers ──────────────────────────────────────────────────
 const OVERRIDE_SECRET = process.env.OVERRIDE_SECRET || 'connabis-override-secret-2026';
-const OVERRIDE_TTL_MS = 48 * 60 * 60 * 1000; // 48 hours
+const OVERRIDE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 export function generateOverrideToken(customerId) {
   const expires = Date.now() + OVERRIDE_TTL_MS;
@@ -203,7 +203,7 @@ router.get('/override', async (req, res) => {
   if (!token) return res.status(400).send(overridePage('error', 'Token requerido.'));
 
   const customerId = verifyOverrideToken(token);
-  if (!customerId) return res.status(400).send(overridePage('error', 'El enlace es inválido o ya expió (válido por 48 horas).'));
+  if (!customerId) return res.status(400).send(overridePage('error', 'El enlace es inválido o ya expió (válido por 7 días).'));
 
   try {
     const { markCustomerVerified } = await import('../services/shopify.js');

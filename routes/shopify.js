@@ -12,6 +12,7 @@ import {
   isCustomerAlreadyVerified,
   isEmailAlreadyVerified,
   addTag,
+  addVerifiedTag,
   isProfileComplete,
   getCustomerMetafield,
   setCustomerMetafield,
@@ -103,8 +104,10 @@ router.post('/customer-created', async (req, res) => {
     ]);
 
     if (alreadyById || alreadyByEmail) {
-      console.log('[Flow] ⏭️ Already verified — skipping');
-      logEvent({ type: 'webhook', status: 'skipped', detail: 'Customer already verified — skipped', customerId: id, email });
+      console.log('[Flow] ⏭️ Already verified — skipping flow, but cleaning up tags');
+      // Even when skipping: force-clean Not Verified tag in case Advanced Registration re-added it
+      addVerifiedTag(id).catch(e => console.warn('[Flow] Tag cleanup failed:', e.message));
+      logEvent({ type: 'webhook', status: 'skipped', detail: 'Customer already verified — tags cleaned, flow skipped', customerId: id, email });
       return;
     }
 
