@@ -376,13 +376,19 @@ export async function setCustomerMetafield(customerId, key, value) {
   });
 }
 
-// Get a specific metafield value for a customer
+// Get a specific metafield value for a customer (uses GraphQL — bypasses REST ownership restriction)
 export async function getCustomerMetafield(customerId, key) {
   try {
-    const data = await shopifyAdminFetch(
-      `/customers/${customerId}/metafields.json?namespace=${METAFIELD_NAMESPACE}&key=${key}`
-    );
-    return data?.metafields?.[0]?.value || null;
+    const gid = `gid://shopify/Customer/${customerId}`;
+    const query = `{
+      customer(id: "${gid}") {
+        metafield(namespace: "${METAFIELD_NAMESPACE}", key: "${key}") {
+          value
+        }
+      }
+    }`;
+    const data = await shopifyGraphQL(query);
+    return data?.customer?.metafield?.value || null;
   } catch { return null; }
 }
 
