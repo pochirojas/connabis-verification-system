@@ -180,14 +180,12 @@ router.get('/customers', async (req, res) => {
     const data = await shopifyAdminFetch('/customers.json?limit=50&order=created_at+DESC&fields=id,email,first_name,last_name,phone,tags,note,created_at,default_address');
     const customers = data?.customers || [];
 
-    // For each, get their verified_number metafield
+    // Fetch verified_number via GraphQL (same method as production code — works regardless of metafield ownership)
+    const { getCustomerMetafield } = await import('../services/shopify.js');
     const results = await Promise.all(customers.map(async (c) => {
       try {
-        // Try both namespaces — older entries may be under 'custom', newer under default namespace
-        const mf = await shopifyAdminFetch(`/customers/${c.id}/metafields.json`);
-        const verifiedMf = (mf?.metafields || []).find(m => m.key === 'verified_number');
-        const verifiedNumber = verifiedMf?.value || null;
-        return { ...c, verified_number: verifiedNumber };
+        const verifiedNumber = await getCustomerMetafield(String(c.id), 'verified_number');
+        return { ...c, verified_number: verifiedNumber || null };
       } catch { return { ...c, verified_number: null }; }
     }));
 
