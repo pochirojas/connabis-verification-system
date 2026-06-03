@@ -285,22 +285,36 @@ export async function addVerifiedTag(customerId) {
 }
 
 // Set the verified number metafield on a customer
+// Uses GraphQL metafieldsSet mutation — bypasses REST ownership restriction
 export async function setVerifiedNumber(customerId, verifiedNumber) {
   console.log('[Shopify] Setting verified number for customer:', customerId, '→', verifiedNumber);
 
-  const data = await shopifyAdminFetch(`/customers/${customerId}/metafields.json`, {
-    method: 'POST',
-    body: JSON.stringify({
-      metafield: {
-        namespace: METAFIELD_NAMESPACE,
-        key: METAFIELD_KEY,
-        value: String(verifiedNumber),
-        type: 'number_integer',
-      },
-    }),
-  });
+  const gid = `gid://shopify/Customer/${customerId}`;
+  const mutation = `
+    mutation metafieldsSet($metafields: [MetafieldsSetInput!]!) {
+      metafieldsSet(metafields: $metafields) {
+        metafields { key namespace value }
+        userErrors { field message }
+      }
+    }
+  `;
+  const variables = {
+    metafields: [{
+      ownerId: gid,
+      namespace: METAFIELD_NAMESPACE,
+      key: METAFIELD_KEY,
+      value: String(verifiedNumber),
+      type: 'number_integer',
+    }],
+  };
 
-  console.log('[Shopify] Verified number metafield set successfully');
+  const data = await shopifyGraphQL(mutation, variables);
+  const errors = data?.metafieldsSet?.userErrors;
+  if (errors && errors.length > 0) {
+    throw new Error(`metafieldsSet error: ${JSON.stringify(errors)}`);
+  }
+
+  console.log('[Shopify] Verified number metafield set via GraphQL successfully');
   return data;
 }
 
