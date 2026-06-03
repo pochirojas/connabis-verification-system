@@ -444,6 +444,19 @@ export async function markCustomerVerified(customerId) {
       console.log('[Shopify] Customer', customerId, 'already has verified_number:', existing, '— skipping duplicate assignment');
       // Ensure Verified tag is set and Not Verified removed (atomic)
       await addVerifiedTag(customerId).catch(() => {});
+      // Ensure note exists (write it if missing or in wrong format)
+      try {
+        const customerData = await shopifyAdminFetch(`/customers/${customerId}.json?fields=id,company,default_address,note`)
+          .then(r => r.customer).catch(() => null);
+        const currentNote = customerData?.note || '';
+        if (!currentNote.includes('Verified Number:')) {
+          const idNumber = customerData?.company || customerData?.default_address?.company || 'N/A';
+          const noteText = `CC ${idNumber} - Verified Number: ${existing} - Verified Automatically by Motas`;
+          await addCustomerNote(customerId, noteText);
+        }
+      } catch (noteErr) {
+        console.warn('[Shopify] Could not update note on re-verify:', noteErr.message);
+      }
       return { verifiedNumber: existing, customerId };
     }
   } catch (e) {
