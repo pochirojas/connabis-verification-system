@@ -121,7 +121,15 @@ router.post('/customer-created', async (req, res) => {
 
       // Only add Not Verified if not already verified (guards against duplicate webhooks firing after verification)
       const alreadyVerifiedNow = await isCustomerAlreadyVerified(id).catch(() => false);
-      if (!alreadyVerifiedNow) await addTag(id, 'Not Verified');
+      if (!alreadyVerifiedNow) {
+        await addTag(id, 'Not Verified').catch(async (e) => {
+          if (e.message.includes('404')) {
+            // Shopify propagation delay — retry after 5s
+            await new Promise(r => setTimeout(r, 5000));
+            await addTag(id, 'Not Verified').catch(e2 => console.error('[Flow] addTag retry failed:', e2.message));
+          } else throw e;
+        });
+      }
       const baseUrl = process.env.APP_BASE_URL || 'https://connabis-verification-system.onrender.com';
       const formUrl = `${baseUrl}/profile/complete?cid=${id}&email=${encodeURIComponent(email)}`;
 
@@ -131,7 +139,12 @@ router.post('/customer-created', async (req, res) => {
         const verification = await createSumaVerification({ customerId: id, email, firstName: first_name, lastName: last_name });
         sumaUrl = verification.verification_url;
         // Store the link in a metafield so profile route can retrieve it
-        await setCustomerMetafield(id, 'pending_verification_url', sumaUrl);
+        await setCustomerMetafield(id, 'pending_verification_url', sumaUrl).catch(async (e) => {
+          if (e.message.includes('404')) {
+            await new Promise(r => setTimeout(r, 5000));
+            await setCustomerMetafield(id, 'pending_verification_url', sumaUrl).catch(() => {});
+          }
+        });
         console.log('[Flow] Pre-generated SUMA session:', verification.id);
       } catch (sumaErr) {
         console.error('[Flow] SUMA pre-generation failed (non-critical):', sumaErr.message);

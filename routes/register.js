@@ -99,12 +99,18 @@ router.post('/', async (req, res) => {
       }]
     });
 
-    // Shopify returns errors.email if duplicate
+    // Shopify 422 validation errors
     if (data.errors) {
-      const emailErr = data.errors.email?.[0];
-      const msg = emailErr
-        ? 'Ya existe una cuenta con ese correo electrónico. <a href="https://connabis.com.co/account/login">Inicia sesión aquí</a>.'
-        : 'Error al crear la cuenta. Por favor intenta de nuevo.';
+      let msg;
+      if (data.errors.email?.[0]?.includes('taken')) {
+        msg = 'Ya existe una cuenta con ese correo electrónico. <a href="https://connabis.com.co/account/login" target="_top">Inicia sesión aquí</a>.';
+      } else if (data.errors.phone?.[0]?.includes('taken')) {
+        msg = 'Ese número de celular ya está registrado en otra cuenta. Si ya tienes cuenta <a href="https://connabis.com.co/account/login" target="_top">inicia sesión aquí</a>, o usa un número diferente.';
+      } else if (data.errors.phone?.[0]?.includes('invalid')) {
+        msg = 'El formato del número de celular no es válido. Verifica e intenta de nuevo.';
+      } else {
+        msg = 'Error al crear la cuenta: ' + JSON.stringify(data.errors);
+      }
       return res.send(registerPage({ error: msg, prefill: req.body }));
     }
 
@@ -139,7 +145,16 @@ router.post('/', async (req, res) => {
   } catch (err) {
     console.error('[Register] Error:', err.message);
     logEvent({ type: 'error', status: 'error', detail: `Registration failed: ${err.message}`, email });
-    res.send(registerPage({ error: 'Error inesperado. Por favor intenta de nuevo en unos momentos.', prefill: req.body }));
+
+    let userMsg = 'Error inesperado. Por favor intenta de nuevo en unos momentos.';
+    if (err.message.includes('phone') && err.message.includes('taken')) {
+      userMsg = 'Ese número de celular ya está registrado en otra cuenta. Si ya tienes cuenta <a href="https://connabis.com.co/account/login" target="_top">inicia sesión aquí</a>, o usa un número diferente.';
+    } else if (err.message.includes('email') && err.message.includes('taken')) {
+      userMsg = 'Ya existe una cuenta con ese correo electrónico. <a href="https://connabis.com.co/account/login" target="_top">Inicia sesión aquí</a>.';
+    } else if (err.message.includes('404')) {
+      userMsg = 'Error de conexión con el servidor. Por favor espera unos segundos e intenta de nuevo.';
+    }
+    res.send(registerPage({ error: userMsg, prefill: req.body }));
   }
 });
 
