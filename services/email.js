@@ -167,6 +167,7 @@ export async function sendDebugAdminEmail({
   const { data, error } = await resend.emails.send({
     from,
     to: 'connabisco@gmail.com',
+    reply_to: 'connabisco@gmail.com',
     subject,
     headers: { 'X-Connabis-Category': 'verificacion' },  // Gmail filter → label VERIFICACIONES
     html: body
@@ -194,6 +195,7 @@ export async function sendVerificationResultEmail({ customerId, email, status, r
   const { data, error } = await resend.emails.send({
     from,
     to: process.env.NOTIFY_EMAIL || 'connabisco@gmail.com',
+    reply_to: 'connabisco@gmail.com',
     subject: `${statusEmoji} Customer Verification ${status.toUpperCase()} - ${email}`,
     headers: { 'X-Connabis-Category': 'verificacion' },  // Gmail filter → label VERIFICACIONES
     html: `
@@ -391,7 +393,8 @@ export async function sendNewRegistrationEmail({ firstName, lastName, email, pho
   const { data, error } = await resend.emails.send({
     from,
     to: 'connabisco@gmail.com',
-    subject: `Nuevo Registro: ${firstName || ''} ${lastName || ''} &lt;${email}&gt;`,
+    reply_to: 'connabisco@gmail.com',
+    subject: `Nuevo Registro: ${firstName || ''} ${lastName || ''} <${email}>`,
     headers: {
       'X-Connabis-Category': 'registro',     // Gmail filter on this → label REGISTRO(S)
     },
