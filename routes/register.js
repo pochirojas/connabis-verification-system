@@ -2,8 +2,9 @@
 // Accessible at /register — AR stays untouched until this is approved
 import express from 'express';
 import { logEvent } from '../services/logger.js';
-import { addTag, setCustomerMetafield, createCustomer } from '../services/shopify.js';
+import { addTag, addVerifiedTag, setCustomerMetafield, createCustomer } from '../services/shopify.js';
 import { startVerificationFlow } from './shopify.js';
+import { sendVerificationEmail } from '../services/email.js';
 
 const router = express.Router();
 
@@ -126,21 +127,51 @@ router.post('/', async (req, res) => {
 
     logEvent({ type: 'webhook', status: 'ok', detail: 'New customer registered via custom form', customerId: id, email: customer.email });
 
-    // Trigger verification flow async (don't block the redirect)
-    startVerificationFlow({
-      id,
-      email: customer.email,
-      first_name: customer.first_name,
-      last_name: customer.last_name
-    }).catch(err => {
-      console.error('[Register] Verification flow failed:', err.message);
-      logEvent({ type: 'error', status: 'error', detail: `Post-register verification flow failed: ${err.message}`, customerId: id, email: customer.email });
-    });
+    const isHongosOnly = (purchase_intent || '').toLowerCase().includes('hongos');
 
-    // Redirect to success — use top-level navigation so it works both standalone and in iframe
-    res.send(`<!DOCTYPE html><html><head><meta charset="UTF-8">
-      <script>window.top.location.href = 'https://connabis.com.co/pages/verificacion-requerida';<\/script>
-    </head><body></body></html>`);
+    if (isHongosOnly) {
+      // ── HONGOS-ONLY FLOW ──────────────────────────────────────────────────
+      // Grant access immediately: tag as 'Verified' + 'Solo Hongos', skip VeriDoc
+      // Still send the verification email in case they want cannabis products later
+      console.log('[Register] Hongos-only customer — granting access, tagging Solo Hongos:', id);
+      Promise.allSettled([
+        addVerifiedTag(id),                         // strips Not Verified, adds Verified (atomic)
+        addTag(id, 'Solo Hongos'),                  // extra tag so you can filter them
+      ]).catch(e => console.error('[Register] Hongos tag error:', e.message));
+
+      // Still send the verification email (so they can upgrade later if they want)
+      startVerificationFlow({
+        id,
+        email: customer.email,
+        first_name: customer.first_name,
+        last_name: customer.last_name
+      }).catch(err => {
+        console.error('[Register] Hongos verification email failed:', err.message);
+      });
+
+      logEvent({ type: 'webhook', status: 'ok', detail: 'Hongos-only customer — Verified + Solo Hongos tags applied, email sent', customerId: id, email: customer.email });
+
+      // Redirect directly to store — they're already verified
+      res.send(`<!DOCTYPE html><html><head><meta charset="UTF-8">
+        <script>window.top.location.href = 'https://connabis.com.co/account';<\/script>
+      </head><body></body></html>`);
+    } else {
+      // ── FULL VERIFICATION FLOW ───────────────────────────────────────────
+      startVerificationFlow({
+        id,
+        email: customer.email,
+        first_name: customer.first_name,
+        last_name: customer.last_name
+      }).catch(err => {
+        console.error('[Register] Verification flow failed:', err.message);
+        logEvent({ type: 'error', status: 'error', detail: `Post-register verification flow failed: ${err.message}`, customerId: id, email: customer.email });
+      });
+
+      // Redirect to pending page
+      res.send(`<!DOCTYPE html><html><head><meta charset="UTF-8">
+        <script>window.top.location.href = 'https://connabis.com.co/pages/verificacion-requerida';<\/script>
+      </head><body></body></html>`);
+    }
 
   } catch (err) {
     console.error('[Register] Error:', err.message);
