@@ -445,12 +445,17 @@ export async function markCustomerVerified(customerId) {
       // Ensure Verified tag is set and Not Verified removed (atomic)
       await addVerifiedTag(customerId).catch(() => {});
       // Ensure note exists (write it if missing or in wrong format)
+      // Skip entirely for Solo Hongos customers
       try {
-        const customerData = await shopifyAdminFetch(`/customers/${customerId}.json?fields=id,company,default_address,note`)
+        const customerData = await shopifyAdminFetch(`/customers/${customerId}.json?fields=id,company,default_address,note,tags`)
           .then(r => r.customer).catch(() => null);
+        const existingTags = (customerData?.tags || '').split(',').map(t => t.trim());
         const currentNote = customerData?.note || '';
-        if (!currentNote.includes('Verified Number:')) {
-          const idNumber = customerData?.company || customerData?.default_address?.company || 'N/A';
+        if (!existingTags.includes('Solo Hongos') && !currentNote.includes('Verified Number:')) {
+          const idNumber = customerData?.company ||
+            customerData?.default_address?.company ||
+            (await getCustomerMetafield(customerId, 'id_number').catch(() => null)) ||
+            'N/A';
           const noteText = `CC ${idNumber} - Verified Number: ${existing} - Verified Automatically by Motas`;
           await addCustomerNote(customerId, noteText);
         }
@@ -490,17 +495,25 @@ export async function markCustomerVerified(customerId) {
   }
 
   // Step 4: Add verification note to customer profile
-  // Format: "CC 1005289529 Users ID - Verified Number: 300 - Verified Automatically by Motas"
-  // ID number is stored in company AND default_address.company
+  // Skip for Solo Hongos customers (no age verification required, no note needed)
+  // ID number is stored in company AND default_address.company; metafield id_number as final fallback
   try {
-    const customer = await shopifyAdminFetch(`/customers/${customerId}.json?fields=id,company,default_address`)
+    const customer = await shopifyAdminFetch(`/customers/${customerId}.json?fields=id,company,default_address,tags`)
       .then(r => r.customer).catch(() => null);
-    const idNumber = customer?.company ||
-      customer?.default_address?.company ||
-      'N/A';
-    console.log('[Shopify] ID number for note:', idNumber, '| company:', customer?.company, '| address company:', customer?.default_address?.company);
-    const noteText = `CC ${idNumber} - Verified Number: ${verifiedNumber} - Verified Automatically by Motas`;
-    await addCustomerNote(customerId, noteText);
+
+    // Skip note entirely for Solo Hongos customers
+    const tags = (customer?.tags || '').split(',').map(t => t.trim());
+    if (tags.includes('Solo Hongos')) {
+      console.log('[Shopify] Solo Hongos customer — skipping verification note');
+    } else {
+      const idNumber = customer?.company ||
+        customer?.default_address?.company ||
+        (await getCustomerMetafield(customerId, 'id_number').catch(() => null)) ||
+        'N/A';
+      console.log('[Shopify] ID number for note:', idNumber, '| company:', customer?.company, '| address company:', customer?.default_address?.company);
+      const noteText = `CC ${idNumber} - Verified Number: ${verifiedNumber} - Verified Automatically by Motas`;
+      await addCustomerNote(customerId, noteText);
+    }
   } catch (error) {
     console.error('[Shopify] Failed to add verification note:', error.message);
   }

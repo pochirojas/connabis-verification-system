@@ -368,14 +368,21 @@ export async function sendConsentEmail({ to }) {
 
 // Send new registration notification to connabisco@gmail.com
 // Gmail filter: create a filter for "X-Connabis-Category: registro" → apply label "REGISTRO(S)"
-export async function sendNewRegistrationEmail({ firstName, lastName, email, phone, idType, idNumber, birthDate, address, city, province, customerId }) {
+export async function sendNewRegistrationEmail({ firstName, lastName, email, phone, idType, idNumber, birthDate, address, city, province, customerId, purchaseIntent }) {
   const from = getFromEmail();
   const resend = getResendClient();
+
+  // Highlight Solo Hongos customers visually so the team can filter immediately
+  const isHongos = (purchaseIntent || '').toLowerCase().includes('hongos');
+  const intentDisplay = isHongos
+    ? `<span style="background:#e8f5e9;color:#1b5e20;padding:2px 8px;border-radius:4px;font-weight:700;">🍄 ${purchaseIntent}</span>`
+    : (purchaseIntent || 'N/A');
 
   const rows = [
     ['Nombre', `${firstName || ''} ${lastName || ''}`.trim() || 'N/A'],
     ['Email', email || 'N/A'],
     ['Celular', phone || 'N/A'],
+    ['Interés de Compra', intentDisplay],
     ['Tipo Doc.', idType || 'N/A'],
     ['Número Doc.', idNumber || 'N/A'],
     ['Fecha Nacimiento', birthDate || 'N/A'],

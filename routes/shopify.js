@@ -82,6 +82,8 @@ router.post('/customer-created', async (req, res) => {
         await setCustomerMetafield(id, 'reg_email_sent', 'true').catch(() => {});
         const fullCustomer = await getCustomer(id).catch(() => null);
         const addr = fullCustomer?.default_address || {};
+        // Read purchase_intent from metafield (set by register.js before webhook fires)
+        const purchaseIntent = await getCustomerMetafield(id, 'purchase_intent').catch(() => null);
         sendNewRegistrationEmail({
           firstName: first_name,
           lastName: last_name,
@@ -94,6 +96,7 @@ router.post('/customer-created', async (req, res) => {
           city: addr.city || 'N/A',
           province: addr.province || 'N/A',
           customerId: id,
+          purchaseIntent: purchaseIntent || 'N/A',
         }).catch(e => console.error('[Flow] Registration email failed (non-critical):', e.message));
       } else {
         console.log('[Flow] Registration email already sent for customer', id, '— skipping duplicate');
