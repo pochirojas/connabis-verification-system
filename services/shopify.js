@@ -361,6 +361,85 @@ export async function updateCustomerProfile(customerId, fields) {
   return data.customer;
 }
 
+// Update customer name + shipping address name to match the ID document
+// Called after successful VeriDoc verification
+export async function syncNameFromDocument(customerId, firstName, lastName) {
+  if (!firstName && !lastName) return;
+  const first = (firstName || '').trim();
+  const last  = (lastName  || '').trim();
+  if (!first && !last) return;
+
+  console.log('[Shopify] Syncing name from document for customer:', customerId, '|', first, last);
+  try {
+    // 1. Update account name
+    const updated = await shopifyAdminFetch(`/customers/${customerId}.json`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        customer: {
+          id: customerId,
+          ...(first && { first_name: first }),
+          ...(last  && { last_name:  last  }),
+        },
+      }),
+    });
+
+    // 2. Update default address name if it exists
+    const addressId = updated?.customer?.default_address?.id;
+    if (addressId) {
+      await shopifyAdminFetch(`/customers/${customerId}/addresses/${addressId}.json`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          address: {
+            ...(first && { first_name: first }),
+            ...(last  && { last_name:  last  }),
+          },
+        }),
+      }).catch(e => console.warn('[Shopify] Address name sync failed (non-critical):', e.message));
+    }
+
+    console.log('[Shopify] Name synced from document:', first, last);
+  } catch (e) {
+    console.error('[Shopify] syncNameFromDocument failed:', e.message);
+  }
+}
+
+// Extract first/last name from a VeriDocID results payload
+// VeriDocID can return names in several fields depending on document type
+export function extractNameFromVeriDocResults(results) {
+  if (!results) return { firstName: null, lastName: null };
+
+  // Priority order of known VeriDocID name fields
+  const d = results.documentData || results.document_data || results;
+
+  const firstName =
+    d.firstName   || d.first_name   ||
+    d.Names       || d.names        ||
+    d.givenName   || d.given_name   ||
+    d.primerNombre|| d.nombre       ||
+    results.firstName || results.first_name || null;
+
+  const lastName =
+    d.lastName    || d.last_name    ||
+    d.LastNames   || d.lastNames    || d.last_names ||
+    d.Surnames    || d.surnames     ||
+    d.primerApellido || d.apellido  ||
+    results.lastName || results.last_name || null;
+
+  // Some providers return a single fullName — split on first space
+  if (!firstName && !lastName) {
+    const full = d.fullName || d.full_name || d.name || results.fullName || results.name;
+    if (full && typeof full === 'string') {
+      const parts = full.trim().split(/\s+/);
+      return { firstName: parts[0] || null, lastName: parts.slice(1).join(' ') || null };
+    }
+  }
+
+  return {
+    firstName: typeof firstName === 'string' ? firstName.trim() : null,
+    lastName:  typeof lastName  === 'string' ? lastName.trim()  : null,
+  };
+}
+
 // Set a metafield on a customer
 export async function setCustomerMetafield(customerId, key, value) {
   return shopifyAdminFetch(`/customers/${customerId}/metafields.json`, {

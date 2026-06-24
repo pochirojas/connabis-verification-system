@@ -7,7 +7,7 @@ const BASE_URL = process.env.RENDER_EXTERNAL_URL || 'https://connabis-verificati
 function makeOverrideUrl(customerId) {
   return `${BASE_URL}/admin/override?token=${generateOverrideToken(customerId)}`;
 }
-import { markCustomerVerified, searchCustomerByEmail, getCustomerMetafield, getCustomer } from '../services/shopify.js';
+import { markCustomerVerified, searchCustomerByEmail, getCustomerMetafield, getCustomer, syncNameFromDocument, extractNameFromVeriDocResults } from '../services/shopify.js';
 import { checkVerificationStatus, getVerificationResults } from '../services/suma.js';
 import { logEvent } from '../services/logger.js';
 
@@ -58,6 +58,18 @@ router.get('/callback', async (req, res) => {
           const shopifyResult = await markCustomerVerified(customer);
           logEvent({ type: 'verification', status: 'ok', detail: `Customer verified via callback — number ${shopifyResult?.verifiedNumber}`, customerId: customer, email });
           console.log('[Callback] ✅ Customer marked verified:', customer, '| number:', shopifyResult?.verifiedNumber);
+
+          // Sync name from ID document
+          const { firstName: docFirst, lastName: docLast } = extractNameFromVeriDocResults(results);
+          if (docFirst || docLast) {
+            console.log('[Callback] Syncing name from document:', docFirst, docLast);
+            await syncNameFromDocument(customer, docFirst, docLast).catch(e =>
+              console.warn('[Callback] Name sync failed (non-critical):', e.message)
+            );
+          } else {
+            console.log('[Callback] No name fields found in VeriDoc results — skipping name sync');
+          }
+
           if (email) await sendVerificationResultEmail({ customerId: customer, email, status: 'verified' }).catch(() => {});
         } else {
           logEvent({ type: 'verification', status: 'warn', detail: 'Customer failed verification (callback poll)', customerId: customer, email });
@@ -268,6 +280,17 @@ router.post('/webhook', express.json(), async (req, res) => {
         verifiedNumber = result.verifiedNumber;
         console.log('[VeriDocID Webhook] Customer marked as verified, number:', verifiedNumber);
         logEvent({ type: 'verification', status: 'ok', detail: `Customer verified — number ${verifiedNumber}`, customerId, email });
+
+        // Sync name from ID document
+        const { firstName: docFirst, lastName: docLast } = extractNameFromVeriDocResults(payload);
+        if (docFirst || docLast) {
+          console.log('[VeriDocID Webhook] Syncing name from document:', docFirst, docLast);
+          await syncNameFromDocument(customerId, docFirst, docLast).catch(e =>
+            console.warn('[VeriDocID Webhook] Name sync failed (non-critical):', e.message)
+          );
+        } else {
+          console.log('[VeriDocID Webhook] No name fields in payload — skipping name sync');
+        }
       } catch (shopifyError) {
         console.error('[VeriDocID Webhook] Shopify update failed (non-critical):', shopifyError.message);
         logEvent({ type: 'error', status: 'error', detail: `Shopify update failed after verification: ${shopifyError.message}`, customerId, email });
