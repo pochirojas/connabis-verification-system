@@ -157,15 +157,10 @@ router.post('/', async (req, res) => {
       </head><body></body></html>`);
     } else {
       // ── FULL VERIFICATION FLOW ───────────────────────────────────────────
-      startVerificationFlow({
-        id,
-        email: customer.email,
-        first_name: customer.first_name,
-        last_name: customer.last_name
-      }).catch(err => {
-        console.error('[Register] Verification flow failed:', err.message);
-        logEvent({ type: 'error', status: 'error', detail: `Post-register verification flow failed: ${err.message}`, customerId: id, email: customer.email });
-      });
+      // NOTE: Do NOT call startVerificationFlow here — the customers/create webhook
+      // handles it exclusively. Calling it here caused a race condition that sent
+      // the verification email twice (both fired before verification_sent metafield
+      // could be written by the first caller).
 
       // Redirect to pending page
       res.send(`<!DOCTYPE html><html><head><meta charset="UTF-8">
