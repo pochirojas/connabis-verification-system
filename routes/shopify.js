@@ -18,6 +18,8 @@ import {
   setCustomerMetafield,
   getCustomer
 } from '../services/shopify.js';
+// Note: isProfileComplete imported above — no longer used in customer-updated (AR removed)
+// Kept in import list as it is still used in customer-created flow
 import { logEvent } from '../services/logger.js';
 
 const router = express.Router();
@@ -217,44 +219,12 @@ export async function startVerificationFlow({ id, email, first_name, last_name }
   logEvent({ type: 'verification', status: 'ok', detail: 'Full verification flow complete', customerId: id, email });
 }
 
-// ─── Customer Update Webhook (catches Advanced Registration approvals) ──────
-router.post('/customer-updated', async (req, res) => {
+// ─── Customer Update Webhook ─────────────────────────────────────────────────
+// Advanced Registration has been removed — this webhook is now a no-op.
+// Keeping the route so Shopify doesn't get 404s (which would cause retries).
+router.post('/customer-updated', (req, res) => {
   if (!verifyShopifyHmac(req)) return res.status(401).send('Unauthorized');
-
-  const { id, email, first_name, last_name, phone, default_address } = req.body;
-  const company = req.body.company || default_address?.company;
-
-  res.status(200).send('ok'); // Respond immediately
-
-  if (!email || !id) return;
-
-  // Small delay so customers/create always processes first if both fire together
-  await new Promise(r => setTimeout(r, 3000));
-
-  try {
-    // Only process if profile is complete (AR customers have all fields)
-    if (!isProfileComplete({ phone, company })) return;
-
-    // Skip if already verified
-    const [alreadyById, alreadyByEmail] = await Promise.all([
-      isCustomerAlreadyVerified(id),
-      isEmailAlreadyVerified(email)
-    ]);
-    if (alreadyById || alreadyByEmail) return;
-
-    // Skip if we already sent a verification email (prevent duplicate on every update)
-    const alreadySent = await getCustomerMetafield(id, 'verification_sent').catch(() => null);
-    if (alreadySent === 'true') return;
-
-    console.log('[CustomerUpdate] New complete-profile customer detected via update — starting flow:', email);
-    logEvent({ type: 'webhook', status: 'ok', detail: 'Customer update — triggering verification flow (Advanced Registration)', customerId: id, email });
-    await startVerificationFlow({ id, email, first_name, last_name });
-
-  } catch (error) {
-    console.error('[CustomerUpdate] Error:', error.message);
-    logEvent({ type: 'error', status: 'error', detail: `Customer update flow failed: ${error.message}`, customerId: id, email });
-    sendErrorAlertEmail({ context: 'Customer update webhook', error: error.message, customerId: id, email }).catch(() => {});
-  }
+  res.status(200).send('ok');
 });
 
 // ─── Retry helper ────────────────────────────────────────────────

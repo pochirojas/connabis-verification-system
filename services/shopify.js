@@ -268,12 +268,14 @@ export async function addVerifiedTag(customerId) {
   const { customer } = await shopifyAdminFetch(`/customers/${customerId}.json`);
   const tagsArray = (customer?.tags || '').split(',').map(t => t.trim()).filter(Boolean);
 
-  // Strip both tags first, then add Verified — single write prevents race condition
+  // Strip Not Verified + all existing Verified (including duplicates), then add once
   const cleaned = tagsArray.filter(
     t => t.toLowerCase() !== VERIFIED_TAG.toLowerCase() &&
          t.toLowerCase() !== NOT_VERIFIED_TAG.toLowerCase()
   );
-  const newTags = [...cleaned, VERIFIED_TAG].join(', ');
+  // Deduplicate the rest, then append Verified exactly once
+  const deduped = [...new Set(cleaned.map(t => t.trim()).filter(Boolean))];
+  const newTags = [...deduped, VERIFIED_TAG].join(', ');
 
   const data = await shopifyAdminFetch(`/customers/${customerId}.json`, {
     method: 'PUT',
@@ -323,7 +325,9 @@ export async function addTag(customerId, tag) {
   const { customer } = await shopifyAdminFetch(`/customers/${customerId}.json`);
   const current = (customer?.tags || '').split(',').map(t => t.trim()).filter(Boolean);
   if (current.some(t => t.toLowerCase() === tag.toLowerCase())) return; // already has it
-  const newTags = [...current, tag].join(', ');
+  // Deduplicate existing tags before appending to avoid accumulation of duplicates
+  const deduped = [...new Set(current.map(t => t.trim()).filter(Boolean))];
+  const newTags = [...deduped, tag].join(', ');
   await shopifyAdminFetch(`/customers/${customerId}.json`, {
     method: 'PUT',
     body: JSON.stringify({ customer: { id: customerId, tags: newTags } }),
