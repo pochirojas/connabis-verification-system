@@ -120,9 +120,10 @@ async function shopifyGraphQL(query, variables = {}) {
 }
 
 // ─── Sequential Number ───────────────────────────────────────────
-// Query all customers who have the "Verified" tag, pull their
-// custom.verified_number metafield, find the max, and return max + 1.
-// This is stateless — Shopify is the single source of truth.
+// Serialized number assignment: only one assignment runs at a time.
+// Without this lock, concurrent verifications (race condition) produce
+// duplicate numbers — both read the same max before either writes.
+let _numberLockChain = Promise.resolve();
 
 async function getNextVerifiedNumber() {
   console.log('[Shopify] Querying highest verified_number via GraphQL...');
@@ -514,21 +515,17 @@ export async function checkFullApproval(customerId) {
 }
 
 // Main entry point: Mark a customer as verified
-// 1. Query Shopify for the next sequential verified number
-// 2. Add "Verified" tag
-// 3. Set custom.verified_number metafield
+// Number assignment is serialized via _numberLockChain to prevent race conditions.
 export async function markCustomerVerified(customerId) {
   console.log('[Shopify] Marking customer', customerId, 'as verified');
 
   // Step 0: Check if already has a verified_number — do not assign a new one
+  // This check runs OUTSIDE the lock (fast path)
   try {
     const existing = await getCustomerMetafield(customerId, 'verified_number');
     if (existing) {
       console.log('[Shopify] Customer', customerId, 'already has verified_number:', existing, '— skipping duplicate assignment');
-      // Ensure Verified tag is set and Not Verified removed (atomic)
       await addVerifiedTag(customerId).catch(() => {});
-      // Ensure note exists (write it if missing or in wrong format)
-      // Skip entirely for Solo Hongos customers
       try {
         const customerData = await shopifyAdminFetch(`/customers/${customerId}.json?fields=id,company,default_address,note,tags`)
           .then(r => r.customer).catch(() => null);
@@ -551,40 +548,51 @@ export async function markCustomerVerified(customerId) {
     console.warn('[Shopify] Could not check existing verified_number:', e.message);
   }
 
-  // Step 1: Get next sequential number from Shopify (stateless)
+  // Steps 1-3 run inside a serial lock — only one customer gets a number at a time.
+  // This prevents two concurrent verifications from reading the same max and
+  // assigning the same number (the root cause of duplicates).
   let verifiedNumber;
-  try {
-    verifiedNumber = await getNextVerifiedNumber();
-  } catch (error) {
-    console.error('[Shopify] Failed to query next verified number:', error.message);
-    // Fallback: use timestamp-based number to avoid blocking verification
-    verifiedNumber = STARTING_NUMBER + Date.now() % 100000;
-    console.warn('[Shopify] Using fallback number:', verifiedNumber);
-  }
+  const result = await new Promise((resolve, reject) => {
+    _numberLockChain = _numberLockChain.then(async () => {
+      try {
+        // Step 0b: Re-check inside lock in case a concurrent call just wrote a number
+        const doubleCheck = await getCustomerMetafield(customerId, 'verified_number').catch(() => null);
+        if (doubleCheck) {
+          console.log('[Shopify] Customer', customerId, 'got a number from concurrent call:', doubleCheck);
+          resolve({ verifiedNumber: doubleCheck, customerId });
+          return;
+        }
 
-  // Step 2: Add "Verified" tag
+        // Step 1: Get next sequential number
+        verifiedNumber = await getNextVerifiedNumber();
+
+        // Step 2: Write metafield IMMEDIATELY — before anything else — so next caller
+        // in the lock queue sees this number and skips past it.
+        await setVerifiedNumber(customerId, verifiedNumber);
+        console.log('[Shopify] Verified number', verifiedNumber, 'locked in for customer', customerId);
+
+        resolve({ verifiedNumber, customerId });
+      } catch (err) {
+        reject(err);
+      }
+    });
+  });
+
+  verifiedNumber = result.verifiedNumber;
+
+  // Step 3: Add "Verified" tag (outside the lock — doesn't affect number assignment)
   try {
     await addVerifiedTag(customerId);
   } catch (error) {
     console.error('[Shopify] Failed to add Verified tag:', error.message);
-    // Continue — metafield is more important than tag
   }
 
-  // Step 3: Set verified number metafield
-  try {
-    await setVerifiedNumber(customerId, verifiedNumber);
-  } catch (error) {
-    console.error('[Shopify] Failed to set verified number:', error.message);
-  }
-
-  // Step 4: Add verification note to customer profile
-  // Skip for Solo Hongos customers (no age verification required, no note needed)
-  // ID number is stored in company AND default_address.company; metafield id_number as final fallback
+  // Step 4: Add verification note
+  // Skip for Solo Hongos customers
   try {
     const customer = await shopifyAdminFetch(`/customers/${customerId}.json?fields=id,company,default_address,tags`)
       .then(r => r.customer).catch(() => null);
 
-    // Skip note entirely for Solo Hongos customers
     const tags = (customer?.tags || '').split(',').map(t => t.trim());
     if (tags.includes('Solo Hongos')) {
       console.log('[Shopify] Solo Hongos customer — skipping verification note');
@@ -593,15 +601,13 @@ export async function markCustomerVerified(customerId) {
         customer?.default_address?.company ||
         (await getCustomerMetafield(customerId, 'id_number').catch(() => null)) ||
         'N/A';
-      console.log('[Shopify] ID number for note:', idNumber, '| company:', customer?.company, '| address company:', customer?.default_address?.company);
+      console.log('[Shopify] ID number for note:', idNumber);
       const noteText = `CC ${idNumber} - Verified Number: ${verifiedNumber} - Verified Automatically by Motas`;
       await addCustomerNote(customerId, noteText);
     }
   } catch (error) {
     console.error('[Shopify] Failed to add verification note:', error.message);
   }
-
-  // Step 5: Not Verified tag removal is now handled atomically inside addVerifiedTag (Step 2)
 
   return { verifiedNumber, customerId };
 }
