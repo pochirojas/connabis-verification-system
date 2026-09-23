@@ -77,6 +77,9 @@ router.post('/customer-created', async (req, res) => {
   try {
     logEvent({ type: 'webhook', status: 'ok', detail: 'Customer created webhook received', customerId: id, email });
 
+    // Give register.js time to write id_type / birth_date / purchase_intent metafields
+    await new Promise(r => setTimeout(r, 4000));
+
     // ─── Registration notification email (guarded — only fires once per customer) ──
     try {
       const regEmailSent = await getCustomerMetafield(id, 'reg_email_sent').catch(() => null);
@@ -85,15 +88,19 @@ router.post('/customer-created', async (req, res) => {
         const fullCustomer = await getCustomer(id).catch(() => null);
         const addr = fullCustomer?.default_address || {};
         // Read purchase_intent from metafield (set by register.js before webhook fires)
-        const purchaseIntent = await getCustomerMetafield(id, 'purchase_intent').catch(() => null);
+        const [purchaseIntent, idTypeMf, birthDateMf] = await Promise.all([
+          getCustomerMetafield(id, 'purchase_intent').catch(() => null),
+          getCustomerMetafield(id, 'id_type').catch(() => null),
+          getCustomerMetafield(id, 'birth_date').catch(() => null),
+        ]);
         sendNewRegistrationEmail({
           firstName: first_name,
           lastName: last_name,
           email,
           phone: phone || fullCustomer?.phone,
-          idType: fullCustomer?.company ? (req.body.note || addr.company || 'N/A') : 'N/A',
+          idType: idTypeMf || 'N/A',
           idNumber: fullCustomer?.company || addr.company || 'N/A',
-          birthDate: req.body.birth_date || 'N/A',
+          birthDate: birthDateMf || 'N/A',
           address: addr.address1 || 'N/A',
           city: addr.city || 'N/A',
           province: addr.province || 'N/A',
@@ -105,6 +112,15 @@ router.post('/customer-created', async (req, res) => {
       }
     } catch (regEmailErr) {
       console.error('[Flow] Registration email setup failed:', regEmailErr.message);
+    }
+
+    // ─── Solo Hongos: no VeriDoc email, no age verification ──────────
+    const payloadTags = (req.body.tags || '').toLowerCase();
+    const intentNow = (await getCustomerMetafield(id, 'purchase_intent').catch(() => null)) || '';
+    if (payloadTags.includes('solo hongos') || intentNow.toLowerCase().includes('hongos')) {
+      console.log('[Flow] Solo Hongos customer — skipping VeriDoc flow:', id);
+      logEvent({ type: 'webhook', status: 'skipped', detail: 'Solo Hongos — VeriDoc flow skipped', customerId: id, email });
+      return;
     }
 
     // ─── Step 0: Duplicate check ───────────────────────────────────

@@ -177,7 +177,7 @@ router.get('/customers', async (req, res) => {
   try {
     const { shopifyAdminFetch } = await import('../services/shopify.js');
     // Get last 50 customers ordered by creation date
-    const data = await shopifyAdminFetch('/customers.json?limit=50&order=created_at+DESC&fields=id,email,first_name,last_name,phone,tags,note,created_at,default_address');
+    const data = await shopifyAdminFetch('/customers.json?limit=50&order=created_at+DESC&fields=id,email,first_name,last_name,phone,tags,note,created_at,default_address,state,verified_email');
     const customers = data?.customers || [];
 
     // Fetch verified_number via GraphQL (same method as production code — works regardless of metafield ownership)

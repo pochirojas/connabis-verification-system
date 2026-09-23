@@ -73,8 +73,12 @@ router.post('/', async (req, res) => {
     return res.send(registerPage({ error: 'Debes tener al menos 18 años para registrarte.', prefill: req.body }));
   }
 
+  const isHongosOnly = (purchase_intent || '').toLowerCase().includes('hongos');
+
   try {
     // Create customer in Shopify
+    // Tags are set AT CREATION so the customers/create webhook already sees them
+    // (prevents the webhook from sending the VeriDoc email to Solo Hongos customers)
     const data = await createCustomer({
       first_name: first_name.trim(),
       last_name: last_name.trim(),
@@ -83,7 +87,8 @@ router.post('/', async (req, res) => {
       password_confirmation: password,
       phone: normalizedPhone,
       company: id_number.trim(), // customer-level
-      tags: 'Not Verified',
+      tags: isHongosOnly ? 'Verified, Solo Hongos' : 'Not Verified',
+      verified_email: true,
       send_email_welcome: false,
       addresses: [{
         company: id_number.trim(), // default_address.company — where Shopify/AR actually reads it
@@ -127,46 +132,17 @@ router.post('/', async (req, res) => {
 
     logEvent({ type: 'webhook', status: 'ok', detail: 'New customer registered via custom form', customerId: id, email: customer.email });
 
-    const isHongosOnly = (purchase_intent || '').toLowerCase().includes('hongos');
-
     if (isHongosOnly) {
       // ── HONGOS-ONLY FLOW ──────────────────────────────────────────────────
-      // Grant access immediately: tag as 'Verified' + 'Solo Hongos', skip VeriDoc
-      // Still send the verification email in case they want cannabis products later
-      console.log('[Register] Hongos-only customer — granting access, tagging Solo Hongos:', id);
-      Promise.allSettled([
-        addVerifiedTag(id),                         // strips Not Verified, adds Verified (atomic)
-        addTag(id, 'Solo Hongos'),                  // extra tag so you can filter them
-      ]).catch(e => console.error('[Register] Hongos tag error:', e.message));
-
-      // Still send the verification email (so they can upgrade later if they want)
-      startVerificationFlow({
-        id,
-        email: customer.email,
-        first_name: customer.first_name,
-        last_name: customer.last_name
-      }).catch(err => {
-        console.error('[Register] Hongos verification email failed:', err.message);
-      });
-
-      logEvent({ type: 'webhook', status: 'ok', detail: 'Hongos-only customer — Verified + Solo Hongos tags applied, email sent', customerId: id, email: customer.email });
-
-      // Redirect directly to store — they're already verified
-      res.send(`<!DOCTYPE html><html><head><meta charset="UTF-8">
-        <script>window.top.location.href = 'https://connabis.com.co/account';<\/script>
-      </head><body></body></html>`);
-    } else {
-      // ── FULL VERIFICATION FLOW ───────────────────────────────────────────
-      // NOTE: Do NOT call startVerificationFlow here — the customers/create webhook
-      // handles it exclusively. Calling it here caused a race condition that sent
-      // the verification email twice (both fired before verification_sent metafield
-      // could be written by the first caller).
-
-      // Redirect to pending page
-      res.send(`<!DOCTYPE html><html><head><meta charset="UTF-8">
-        <script>window.top.location.href = 'https://connabis.com.co/pages/verificacion-requerida';<\/script>
-      </head><body></body></html>`);
+      // Tags 'Verified, Solo Hongos' were set at creation. No VeriDoc email, no note.
+      console.log('[Register] Hongos-only customer created with Verified + Solo Hongos:', id);
+      logEvent({ type: 'webhook', status: 'ok', detail: 'Hongos-only customer — Verified + Solo Hongos at creation (no VeriDoc email)', customerId: id, email: customer.email });
     }
+
+    // Auto-login: submit Shopify's classic login form at top level so the customer
+    // lands on the store already signed in (instead of an empty login page).
+    const returnUrl = isHongosOnly ? '/account' : '/pages/verificacion-requerida';
+    res.send(autoLoginPage({ email: customer.email, password, returnUrl }));
 
   } catch (err) {
     console.error('[Register] Error:', err.message);
@@ -188,6 +164,23 @@ router.post('/', async (req, res) => {
 router.get('/success', (req, res) => {
   res.send(successPage());
 });
+
+// Auto-login page: POSTs credentials to Shopify /account/login in the top window
+function autoLoginPage({ email, password, returnUrl }) {
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"></head>
+<body style="font-family:sans-serif;text-align:center;padding:40px;color:#333">
+  <p>Cuenta creada. Iniciando sesión…</p>
+  <form id="f" method="post" action="https://connabis.com.co/account/login" target="_top" accept-charset="UTF-8">
+    <input type="hidden" name="form_type" value="customer_login">
+    <input type="hidden" name="utf8" value="✓">
+    <input type="hidden" name="customer[email]" value="${escHtml(email)}">
+    <input type="hidden" name="customer[password]" value="${escHtml(password)}">
+    <input type="hidden" name="return_url" value="${escHtml(returnUrl)}">
+    <noscript><button type="submit">Continuar</button></noscript>
+  </form>
+  <script>document.getElementById('f').submit();<\/script>
+</body></html>`;
+}
 
 // ─── HTML ─────────────────────────────────────────────────────────────────────
 function registerPage({ error = null, prefill = {} } = {}) {
