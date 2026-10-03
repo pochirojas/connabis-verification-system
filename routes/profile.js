@@ -5,6 +5,7 @@ import {
   getCustomer,
   updateCustomerProfile,
   addTag,
+  addVerifiedTag,
   removeTag,
   isProfileComplete,
   checkFullApproval,
@@ -45,7 +46,8 @@ router.get('/complete', async (req, res) => {
 
 // POST /profile/complete — Handle form submission
 router.post('/complete', express.urlencoded({ extended: true }), async (req, res) => {
-  const { cid, email, phone, id_type: id_type_raw, id_type_otro, id_number, address, address2, city, province, zip, birth_date } = req.body;
+  const { cid, email, phone, id_type: id_type_raw, id_type_otro, id_number, address, address2, city, province, zip, birth_date, purchase_intent } = req.body;
+  const isHongosOnly = (purchase_intent || '').toLowerCase().includes('hongos');
 
   // Resolve "Otro" to the custom text value
   const id_type = id_type_raw === 'OTRO' ? (id_type_otro?.trim() || 'OTRO') : id_type_raw;
@@ -105,7 +107,16 @@ router.post('/complete', express.urlencoded({ extended: true }), async (req, res
     await Promise.allSettled([
       setCustomerMetafield(cid, 'id_type', id_type),
       setCustomerMetafield(cid, 'birth_date', birth_date),
+      setCustomerMetafield(cid, 'purchase_intent', purchase_intent || 'Adquirir todos los productos'),
     ]);
+
+    if (isHongosOnly) {
+      // Solo Hongos: same as register.js — Verified + Solo Hongos, no VeriDoc, no note
+      await addVerifiedTag(cid).catch(e => console.error('[Profile] addVerifiedTag:', e.message));
+      await addTag(cid, 'Solo Hongos').catch(e => console.error('[Profile] Solo Hongos tag:', e.message));
+      logEvent({ type: 'profile', status: 'ok', detail: 'Profile completed — Solo Hongos (no VeriDoc)', customerId: cid, email });
+      return res.send(successPage('¡Perfil completado! Ya puedes comprar hongos funcionales en Connabis.'));
+    }
     console.log('[Profile] Customer profile updated:', cid);
 
     // Remove "Not Verified" tag now that profile is complete
@@ -271,6 +282,17 @@ function formPage({ cid, email, customer, error = null }) {
                      required minlength="5" inputmode="numeric">
               <p class="hint">Sin puntos ni espacios</p>
             </div>
+          </div>
+
+          <p class="section-title">Tu Interés</p>
+          <div class="field">
+            <label>¿Qué productos te interesan? <span class="req">*</span></label>
+            <select name="purchase_intent" required>
+              <option value="">Seleccionar</option>
+              <option value="Adquirir todos los productos">Todos los productos (cannábicos + hongos)</option>
+              <option value="Adquirir exclusivamente hongos">Solo hongos funcionales</option>
+            </select>
+            <p class="hint">Si eliges solo hongos no necesitas verificar tu documento con foto.</p>
           </div>
 
           <p class="section-title">Datos Personales</p>
