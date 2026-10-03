@@ -8,13 +8,33 @@ import { sendVerificationEmail } from '../services/email.js';
 
 const router = express.Router();
 
+// ─── Auto-detect Shopify customer accounts version ──────────────────────────
+// Legacy: /account/login renders the theme (200). New customer accounts: 302 → shopify.com/authentication/...
+// Cached 5 min so the switch in Shopify admin takes effect without a redeploy.
+let _acctMode = { value: 'classic', at: 0 };
+export async function storeUsesNewAccounts() {
+  if (Date.now() - _acctMode.at < 5 * 60 * 1000) return _acctMode.value === 'new';
+  try {
+    const r = await fetch('https://connabis.com.co/account/login', { redirect: 'manual', headers: { 'User-Agent': 'Mozilla/5.0 ConnabisVerification' } });
+    const loc = r.headers.get('location') || '';
+    const isNew = r.status >= 300 && r.status < 400 && /shopify\.com\/(authentication|\d+\/account)|customer_authentication|account\.connabis/i.test(loc);
+    _acctMode = { value: isNew ? 'new' : 'classic', at: Date.now() };
+    console.log('[Register] customer accounts mode:', _acctMode.value, r.status, loc.slice(0, 80));
+  } catch (e) {
+    console.error('[Register] accounts mode detection failed:', e.message);
+    _acctMode.at = Date.now() - 4 * 60 * 1000; // retry in ~1 min, keep last value
+  }
+  return _acctMode.value === 'new';
+}
+storeUsesNewAccounts();
+
 // Parse form bodies for this router (belt-and-suspenders in case global middleware hasn't run)
 router.use(express.urlencoded({ extended: true }));
 
 // ─── GET /register — Show the form ───────────────────────────────────────────
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   const error = req.query.error || null;
-  const mode = req.query.mode === 'new' ? 'new' : 'classic';
+  const mode = (req.query.mode === 'new' || await storeUsesNewAccounts()) ? 'new' : 'classic';
   res.send(registerPage({ error, mode }));
 });
 
@@ -28,7 +48,7 @@ router.post('/', async (req, res) => {
     privacy_policy
   } = req.body;
   // mode=new → Shopify "new customer accounts" (passwordless, one-time code). No password collected.
-  const isNewAccounts = req.body.mode === 'new';
+  const isNewAccounts = req.body.mode === 'new' || await storeUsesNewAccounts();
 
   // Resolve "Otro" to the custom text value
   const id_type = id_type_raw === 'OTRO' ? (id_type_otro?.trim() || 'OTRO') : id_type_raw;

@@ -46,7 +46,7 @@ router.get('/complete', async (req, res) => {
 
 // POST /profile/complete — Handle form submission
 router.post('/complete', express.urlencoded({ extended: true }), async (req, res) => {
-  const { cid, email, phone, id_type: id_type_raw, id_type_otro, id_number, address, address2, city, province, zip, birth_date, purchase_intent } = req.body;
+  const { cid, email, phone, id_type: id_type_raw, id_type_otro, id_number, address, address2, city, province, zip, birth_date, purchase_intent, first_name, last_name } = req.body;
   const isHongosOnly = (purchase_intent || '').toLowerCase().includes('hongos');
 
   // Resolve "Otro" to the custom text value
@@ -66,6 +66,8 @@ router.post('/complete', express.urlencoded({ extended: true }), async (req, res
   if (!cid || !email) return res.status(400).send(errorPage('Enlace inválido. Por favor contacta a connabisco@gmail.com'));
   if (!id_type_raw) missing.push('Tipo de documento');
   if (id_type_raw === 'OTRO' && !id_type_otro?.trim()) missing.push('Especifica el tipo de documento');
+  if (!first_name?.trim()) missing.push('Nombre');
+  if (!last_name?.trim()) missing.push('Apellido');
   if (!id_number?.trim()) missing.push('Número de documento');
   if (!normalizedPhone || normalizedPhone === '+57') missing.push('Celular');
   if (!birth_date) missing.push('Fecha de nacimiento');
@@ -88,9 +90,13 @@ router.post('/complete', express.urlencoded({ extended: true }), async (req, res
 
   try {
     const profileFields = {
+      first_name: first_name.trim(),
+      last_name: last_name.trim(),
       phone: normalizedPhone,
       company: id_number.trim(),        // customer-level (some AR versions read here)
       addresses: [{
+        first_name: first_name.trim(),
+        last_name: last_name.trim(),
         company: id_number.trim(),       // default_address.company — where Shopify/AR actually stores it
         address1: address.trim(),
         address2: address2?.trim() || '',
@@ -129,8 +135,8 @@ router.post('/complete', express.urlencoded({ extended: true }), async (req, res
     startVerificationFlow({
       id: cid,
       email,
-      first_name: customer?.first_name || '',
-      last_name: customer?.last_name || ''
+      first_name: first_name.trim(),
+      last_name: last_name.trim()
     }).catch(err => {
       console.error('[Profile] Verification flow failed after profile complete:', err.message);
     });
@@ -255,6 +261,18 @@ function formPage({ cid, email, customer, error = null }) {
         <form method="POST" action="https://connabis-verification-system.onrender.com/profile/complete" autocomplete="on" id="profileForm" target="_top">
           <input type="hidden" name="cid" value="${cid}">
           <input type="hidden" name="email" value="${email}">
+
+          <p class="section-title">Tu Nombre</p>
+          <div class="row">
+            <div class="field">
+              <label>Nombre <span class="req">*</span></label>
+              <input type="text" name="first_name" required autocomplete="given-name" value="${escAttr(customer?.first_name || '')}">
+            </div>
+            <div class="field">
+              <label>Apellido <span class="req">*</span></label>
+              <input type="text" name="last_name" required autocomplete="family-name" value="${escAttr(customer?.last_name || '')}">
+            </div>
+          </div>
 
           <p class="section-title">Documento de Identidad</p>
 
@@ -433,3 +451,5 @@ function errorPage(message) {
 }
 
 export default router;
+
+function escAttr(v) { return String(v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
