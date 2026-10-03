@@ -2,7 +2,7 @@
 // Accessible at /register — AR stays untouched until this is approved
 import express from 'express';
 import { logEvent } from '../services/logger.js';
-import { addTag, addVerifiedTag, setCustomerMetafield, createCustomer } from '../services/shopify.js';
+import { addTag, addVerifiedTag, setCustomerMetafield, createCustomer, shopifyAdminFetch } from '../services/shopify.js';
 import { startVerificationFlow } from './shopify.js';
 import { sendVerificationEmail } from '../services/email.js';
 
@@ -152,7 +152,21 @@ router.post('/', async (req, res) => {
     if (err.message.includes('phone') && err.message.includes('taken')) {
       userMsg = 'Ese número de celular ya está registrado en otra cuenta. Si ya tienes cuenta <a href="https://connabis.com.co/account/login" target="_top">inicia sesión aquí</a>, o usa un número diferente.';
     } else if (err.message.includes('email') && err.message.includes('taken')) {
-      userMsg = 'Ya existe una cuenta con ese correo electrónico. <a href="https://connabis.com.co/account/login" target="_top">Inicia sesión aquí</a>.';
+      userMsg = 'Ya existe una cuenta con ese correo electrónico. <a href="https://connabis.com.co/account/login" target="_top">Inicia sesión aquí</a> o usa "¿Olvidaste tu contraseña?" si no la recuerdas.';
+      // Accounts created by Google / BLOY / checkout have NO password (state=disabled):
+      // they can't log in and can't re-register. Send Shopify's activation email so they can set one.
+      try {
+        const cleanEmail = (email || '').trim().toLowerCase();
+        const found = await shopifyAdminFetch(`/customers/search.json?query=${encodeURIComponent('email:' + cleanEmail)}&fields=id,email,state`);
+        const existing = (found?.customers || []).find(c => (c.email || '').toLowerCase() === cleanEmail);
+        if (existing && existing.state !== 'enabled') {
+          await shopifyAdminFetch(`/customers/${existing.id}/send_invite.json`, { method: 'POST', body: JSON.stringify({ customer_invite: {} }) });
+          logEvent({ type: 'email', status: 'ok', detail: `Activation invite sent (existing account state=${existing.state})`, customerId: existing.id, email: cleanEmail });
+          userMsg = `Ya existe una cuenta con <strong>${escHtml(cleanEmail)}</strong>, pero todavía no tiene contraseña (se creó con Google o en una compra). Te acabamos de enviar un correo para <strong>activarla y crear tu contraseña</strong>. Revisa también spam. Si te registraste con Google, también puedes entrar con el botón de Google en <a href="https://connabis.com.co/account/login" target="_top">Iniciar sesión</a>.`;
+        }
+      } catch (inviteErr) {
+        console.error('[Register] Activation invite failed:', inviteErr.message);
+      }
     } else if (err.message.includes('404')) {
       userMsg = 'Error de conexión con el servidor. Por favor espera unos segundos e intenta de nuevo.';
     }
