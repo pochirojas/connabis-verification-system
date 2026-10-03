@@ -14,7 +14,8 @@ router.use(express.urlencoded({ extended: true }));
 // ─── GET /register — Show the form ───────────────────────────────────────────
 router.get('/', (req, res) => {
   const error = req.query.error || null;
-  res.send(registerPage({ error }));
+  const mode = req.query.mode === 'new' ? 'new' : 'classic';
+  res.send(registerPage({ error, mode }));
 });
 
 // ─── POST /register — Handle submission ──────────────────────────────────────
@@ -26,6 +27,8 @@ router.post('/', async (req, res) => {
     address, address2, city, province, zip,
     privacy_policy
   } = req.body;
+  // mode=new → Shopify "new customer accounts" (passwordless, one-time code). No password collected.
+  const isNewAccounts = req.body.mode === 'new';
 
   // Resolve "Otro" to the custom text value
   const id_type = id_type_raw === 'OTRO' ? (id_type_otro?.trim() || 'OTRO') : id_type_raw;
@@ -43,7 +46,7 @@ router.post('/', async (req, res) => {
   if (!first_name?.trim()) missing.push('Nombre');
   if (!last_name?.trim()) missing.push('Apellido');
   if (!email?.trim()) missing.push('Correo');
-  if (!password) missing.push('Contraseña');
+  if (!isNewAccounts && !password) missing.push('Contraseña');
   if (!id_type_raw) missing.push('Tipo de documento');
   if (id_type_raw === 'OTRO' && !id_type_otro?.trim()) missing.push('Especifica el tipo de documento');
   if (!id_number?.trim()) missing.push('Número de documento');
@@ -58,11 +61,11 @@ router.post('/', async (req, res) => {
     return res.send(registerPage({ error: `Por favor completa los siguientes campos: ${missing.join(', ')}.`, prefill: req.body }));
   }
 
-  if (password.length < 8) {
+  if (!isNewAccounts && password.length < 8) {
     return res.send(registerPage({ error: 'La contraseña debe tener al menos 8 caracteres.', prefill: req.body }));
   }
 
-  if (password !== password_confirm) {
+  if (!isNewAccounts && password !== password_confirm) {
     return res.send(registerPage({ error: 'Las contraseñas no coinciden.', prefill: req.body }));
   }
 
@@ -83,8 +86,7 @@ router.post('/', async (req, res) => {
       first_name: first_name.trim(),
       last_name: last_name.trim(),
       email: email.trim().toLowerCase(),
-      password,
-      password_confirmation: password,
+      ...(isNewAccounts ? {} : { password, password_confirmation: password }),
       phone: normalizedPhone,
       company: id_number.trim(), // customer-level
       tags: isHongosOnly ? 'Verified, Solo Hongos' : 'Not Verified',
@@ -142,7 +144,11 @@ router.post('/', async (req, res) => {
     // Auto-login: submit Shopify's classic login form at top level so the customer
     // lands on the store already signed in (instead of an empty login page).
     const returnUrl = isHongosOnly ? '/account' : '/pages/verificacion-requerida';
-    res.send(autoLoginPage({ email: customer.email, password, returnUrl }));
+    if (isNewAccounts) {
+      res.send(newAccountsDonePage({ email: customer.email, returnUrl }));
+    } else {
+      res.send(autoLoginPage({ email: customer.email, password, returnUrl }));
+    }
 
   } catch (err) {
     console.error('[Register] Error:', err.message);
@@ -153,13 +159,16 @@ router.post('/', async (req, res) => {
       userMsg = 'Ese número de celular ya está registrado en otra cuenta. Si ya tienes cuenta <a href="https://connabis.com.co/account/login" target="_top">inicia sesión aquí</a>, o usa un número diferente.';
     } else if (err.message.includes('email') && err.message.includes('taken')) {
       userMsg = 'Ya existe una cuenta con ese correo electrónico. <a href="https://connabis.com.co/account/login" target="_top">Inicia sesión aquí</a> o usa "¿Olvidaste tu contraseña?" si no la recuerdas.';
+      if (isNewAccounts) {
+        userMsg = 'Ya existe una cuenta con ese correo. <a href="https://connabis.com.co/account/login" target="_top">Inicia sesión aquí</a> con tu correo: te enviaremos un código de 6 dígitos (no necesitas contraseña).';
+      }
       // Accounts created by Google / BLOY / checkout have NO password (state=disabled):
       // they can't log in and can't re-register. Send Shopify's activation email so they can set one.
       try {
         const cleanEmail = (email || '').trim().toLowerCase();
         const found = await shopifyAdminFetch(`/customers/search.json?query=${encodeURIComponent('email:' + cleanEmail)}&fields=id,email,state`);
         const existing = (found?.customers || []).find(c => (c.email || '').toLowerCase() === cleanEmail);
-        if (existing && existing.state !== 'enabled') {
+        if (!isNewAccounts && existing && existing.state !== 'enabled') {
           await shopifyAdminFetch(`/customers/${existing.id}/send_invite.json`, { method: 'POST', body: JSON.stringify({ customer_invite: {} }) });
           logEvent({ type: 'email', status: 'ok', detail: `Activation invite sent (existing account state=${existing.state})`, customerId: existing.id, email: cleanEmail });
           userMsg = `Ya existe una cuenta con <strong>${escHtml(cleanEmail)}</strong>, pero todavía no tiene contraseña (se creó con Google o en una compra). Te acabamos de enviar un correo para <strong>activarla y crear tu contraseña</strong>. Revisa también spam. Si te registraste con Google, también puedes entrar con el botón de Google en <a href="https://connabis.com.co/account/login" target="_top">Iniciar sesión</a>.`;
@@ -179,6 +188,18 @@ router.get('/success', (req, res) => {
   res.send(successPage());
 });
 
+// New customer accounts: no password → send them to Shopify's code login
+function newAccountsDonePage({ email, returnUrl }) {
+  const loginUrl = 'https://connabis.com.co/account/login?return_url=' + encodeURIComponent(returnUrl);
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="font-family:'Segoe UI',sans-serif;text-align:center;padding:40px 20px;color:#222">
+  <h2 style="color:#32965d">¡Cuenta creada!</h2>
+  <p>Ahora inicia sesión con <strong>${escHtml(email)}</strong>.<br>Te enviaremos un código de 6 dígitos a tu correo (no necesitas contraseña).</p>
+  <p><a href="${loginUrl}" target="_top" style="display:inline-block;background:#32965d;color:#fff;padding:14px 28px;border-radius:50px;text-decoration:none;font-weight:600">Iniciar sesión</a></p>
+  <script>setTimeout(function(){ window.top.location.href = ${JSON.stringify(loginUrl)}; }, 3000);<\/script>
+</body></html>`;
+}
+
 // Auto-login page: POSTs credentials to Shopify /account/login in the top window
 function autoLoginPage({ email, password, returnUrl }) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"></head>
@@ -197,7 +218,8 @@ function autoLoginPage({ email, password, returnUrl }) {
 }
 
 // ─── HTML ─────────────────────────────────────────────────────────────────────
-function registerPage({ error = null, prefill = {} } = {}) {
+function registerPage({ error = null, prefill = {}, mode = null } = {}) {
+  mode = mode || (prefill.mode === 'new' ? 'new' : 'classic');
   const v = (field) => prefill[field] ? `value="${escHtml(prefill[field])}"` : '';
   const sel = (field, val) => prefill[field] === val ? 'selected' : '';
 
@@ -348,6 +370,8 @@ function registerPage({ error = null, prefill = {} } = {}) {
         ${error ? `<div class="error-box">${error}</div>` : ''}
 
         <form method="POST" action="https://connabis-verification-system.onrender.com/register" autocomplete="on" id="regForm" target="_top">
+          ${mode === 'new' ? `<input type="hidden" name="mode" value="new">
+          <script>document.addEventListener('DOMContentLoaded',function(){document.querySelectorAll('#pwdInput,#pwdConfirm').forEach(function(i){i.required=false;i.removeAttribute('minlength');var f=i.closest('.field');if(f)f.style.display='none';});});<\/script>` : ''}
 
           <p class="section-title">Información Personal</p>
 
