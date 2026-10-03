@@ -11,6 +11,7 @@ import sumaRoutes from './routes/suma.js';
 import profileRoutes from './routes/profile.js';
 import adminRoutes from './routes/admin.js';
 import registerRoutes from './routes/register.js';
+import resendRoutes from './routes/resend.js';
 import { sendTestEmail } from './services/email.js';
 import { logEvent } from './services/logger.js';
 import { getCustomer, getCustomerMetafield } from './services/shopify.js';
@@ -160,6 +161,7 @@ app.use('/suma', sumaRoutes);
 app.use('/profile', profileRoutes);
 app.use('/admin', adminRoutes);
 app.use('/register', registerRoutes);
+app.use('/resend-verification', resendRoutes);
 
 // Catch-all for unknown routes
 app.use('*', (req, res) => {
