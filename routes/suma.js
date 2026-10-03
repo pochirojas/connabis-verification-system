@@ -233,6 +233,9 @@ router.post('/webhook', express.json(), async (req, res) => {
     if (!email && typeof verificationId === 'string' && emailRegex.test(verificationId)) {
       email = verificationId;
     }
+    // Links created from VeriDoc's own portal use the email as payload.id and/or emailLinkedSdk
+    if (!email && typeof externalId === 'string' && emailRegex.test(externalId)) email = externalId;
+    if (!email && Array.isArray(payload.emailLinkedSdk) && payload.emailLinkedSdk[0]?.email) email = payload.emailLinkedSdk[0].email;
 
     // Bug fix: When customerId is null but we have an email, search Shopify to find the customer
     let customerName = null;
