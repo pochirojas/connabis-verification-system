@@ -17,7 +17,8 @@ export async function storeUsesNewAccounts() {
   try {
     const r = await fetch('https://connabis.com.co/account/login', { redirect: 'manual', headers: { 'User-Agent': 'Mozilla/5.0 ConnabisVerification' } });
     const loc = r.headers.get('location') || '';
-    const isNew = r.status >= 300 && r.status < 400 && /shopify\.com\/(authentication|\d+\/account)|customer_authentication|account\.connabis/i.test(loc);
+    // New accounts redirect off the theme (e.g. iniciarsesion.connabis.com.co/..., shopify.com/<id>/account, /customer_authentication/...)
+    const isNew = r.status >= 300 && r.status < 400 && !!loc && !/^(https?:\/\/(www\.)?connabis\.com\.co)?\/(account|password|challenge)/i.test(loc);
     _acctMode = { value: isNew ? 'new' : 'classic', at: Date.now() };
     console.log('[Register] customer accounts mode:', _acctMode.value, r.status, loc.slice(0, 80));
   } catch (e) {
