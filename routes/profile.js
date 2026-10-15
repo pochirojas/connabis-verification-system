@@ -105,6 +105,7 @@ router.post('/complete', express.urlencoded({ extended: true }), async (req, res
         zip: (zip || '').trim(),
         country: 'Colombia',
         country_code: 'CO',
+        default: true,
       }]
     };
 
