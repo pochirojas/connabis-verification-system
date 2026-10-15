@@ -12,6 +12,7 @@ import profileRoutes from './routes/profile.js';
 import adminRoutes from './routes/admin.js';
 import registerRoutes from './routes/register.js';
 import resendRoutes from './routes/resend.js';
+import ordersRoutes, { checkOrder } from './routes/orders.js';
 import { sendTestEmail } from './services/email.js';
 import { logEvent } from './services/logger.js';
 import { getCustomer, getCustomerMetafield } from './services/shopify.js';
@@ -162,6 +163,35 @@ app.use('/profile', profileRoutes);
 app.use('/admin', adminRoutes);
 app.use('/register', registerRoutes);
 app.use('/resend-verification', resendRoutes);
+app.use('/webhooks/orders', ordersRoutes);
+
+// One-time setup: register orders/create webhook (key = OVERRIDE_SECRET-derived)
+app.post('/admin/setup-order-webhook', async (req, res) => {
+  const { createHmac } = await import('crypto');
+  const key = createHmac('sha256', process.env.OVERRIDE_SECRET || 'connabis-override-secret-2026').update('setup-order-webhook').digest('hex').slice(0, 24);
+  if (req.query.key !== key) return res.status(403).json({ error: 'forbidden' });
+  try {
+    const { shopifyAdminFetch } = await import('./services/shopify.js');
+    const address = `${process.env.APP_BASE_URL || 'https://connabis-verification-system.onrender.com'}/webhooks/orders/create`;
+    const list = await shopifyAdminFetch('/webhooks.json?topic=orders/create');
+    if ((list.webhooks || []).some(w => w.address === address)) return res.json({ ok: true, already: true, webhooks: list.webhooks });
+    const r = await shopifyAdminFetch('/webhooks.json', { method: 'POST', body: JSON.stringify({ webhook: { topic: 'orders/create', address, format: 'json' } }) });
+    res.json({ ok: true, created: r.webhook });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Re-check a past order by id (same key) — dry run, no tagging
+app.get('/admin/check-order', async (req, res) => {
+  const { createHmac } = await import('crypto');
+  const key = createHmac('sha256', process.env.OVERRIDE_SECRET || 'connabis-override-secret-2026').update('setup-order-webhook').digest('hex').slice(0, 24);
+  if (req.query.key !== key) return res.status(403).json({ error: 'forbidden' });
+  try {
+    const { shopifyAdminFetch } = await import('./services/shopify.js');
+    const { order } = await shopifyAdminFetch(`/orders/${req.query.id}.json`);
+    const r = await checkOrder(order);
+    res.json({ name: order.name, reason: r.reason, vn: r.vn, soloHongos: r.soloHongos, lines: r.lines });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 
 // Catch-all for unknown routes
 app.use('*', (req, res) => {

@@ -453,3 +453,24 @@ export async function sendErrorAlertEmail({ context, error, customerId, email })
   if (err) console.error('[Email] Error alert failed to send:', JSON.stringify(err));
   else console.log('[Email] Error alert sent, ID:', data?.id);
 }
+
+// Alert admin about an order from a customer who should not have been able to buy
+export async function sendOrderAlertEmail({ orderName, orderId, email, customerId, reason, lines, total, currency }) {
+  const from = getFromEmail();
+  const resend = getResendClient();
+  const items = (lines || []).map(l => `<li>${l.qty} × ${l.title}${l.variant ? ' — ' + l.variant : ''}</li>`).join('');
+  const { error } = await resend.emails.send({
+    from, to: 'connabisco@gmail.com',
+    subject: `🚨 ALERTA: pedido ${orderName} de cliente NO verificado — ${email || 'sin email'}`,
+    html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:16px;">
+      <h2 style="color:#b42318;">🚨 Pedido que NO debió pasar</h2>
+      <p><b>Pedido:</b> ${orderName} — ${total} ${currency || ''}</p>
+      <p><b>Cliente:</b> ${email || 'N/A'} (ID ${customerId || 'N/A'})</p>
+      <p><b>Motivo:</b> ${reason}</p>
+      <ul>${items}</ul>
+      <p>El pedido quedó con la etiqueta <b>ALERTA NO VERIFICADO</b>. No lo despaches sin revisar.</p>
+      <p><a href="https://admin.shopify.com/store/connabis/orders/${orderId}">Ver pedido en Shopify</a>${customerId ? ` · <a href="https://admin.shopify.com/store/connabis/customers/${customerId}">Ver cliente</a>` : ''}</p>
+    </div>`
+  });
+  if (error) throw new Error(`Order alert email failed: ${error.message}`);
+}
