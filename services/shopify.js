@@ -519,6 +519,10 @@ export async function checkFullApproval(customerId) {
 export async function markCustomerVerified(customerId) {
   console.log('[Shopify] Marking customer', customerId, 'as verified');
 
+  // Passing VeriDoc = full verification: drop the restrictive 'Solo Hongos' tag
+  // (the theme gate limits 'Solo Hongos' customers to hongos-only carts).
+  await removeTag(customerId, 'Solo Hongos').catch(() => {});
+
   // Step 0: Check if already has a verified_number — do not assign a new one
   // This check runs OUTSIDE the lock (fast path)
   try {
