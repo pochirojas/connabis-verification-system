@@ -28,9 +28,13 @@ export async function checkOrder(order) {
   else {
     customer = await getCustomer(cid).catch(() => null);
     vn = await getCustomerMetafield(cid, 'verified_number').catch(() => null);
-    const tags = String(customer?.tags || '').split(',').map(t => t.trim());
-    soloHongos = tags.includes('Solo Hongos');
-    if (!vn) {
+    const tags = String(customer?.tags || '').split(',').map(t => t.trim().toLowerCase());
+    soloHongos = tags.includes('solo hongos');
+    if (tags.includes('not verified') || tags.includes('no verificado')) {
+      reason = 'Cliente con etiqueta "Not Verified"';
+    } else if (!tags.includes('verified')) {
+      reason = 'Cliente sin etiqueta "Verified"' + (vn ? ` (tiene número ${vn}, pero la etiqueta fue retirada)` : '');
+    } else if (!vn && soloHongos) {
       if (soloHongos) {
         const nonHongos = [];
         for (const l of lines) {
@@ -42,8 +46,6 @@ export async function checkOrder(order) {
           if (type !== HONGOS_TYPE) nonHongos.push(l.title);
         }
         if (nonHongos.length) reason = `Cliente "Solo Hongos" (sin VeriDoc) compró productos que no son hongos: ${nonHongos.join(', ')}`;
-      } else {
-        reason = 'Cliente sin número de verificado (no pasó VeriDoc)';
       }
     }
     const company = customer?.company || customer?.default_address?.company || order.shipping_address?.company || order.billing_address?.company;

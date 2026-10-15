@@ -45,7 +45,8 @@ router.post('/', express.json(), async (req, res) => {
     }
     const vn = await getCustomerMetafield(cid, 'verified_number').catch(() => null);
     const tags = String(customer.tags || '').split(',').map(t => t.trim());
-    if (vn || (tags.includes('Verified') && !tags.includes('Solo Hongos'))) {
+    const tl = tags.map(t => t.toLowerCase());
+    if (tl.includes('verified') && !tl.includes('not verified') && (vn || !tl.includes('solo hongos'))) {
       return res.json({ status: 'verified' });
     }
     const company = customer.company || customer.default_address?.company;
