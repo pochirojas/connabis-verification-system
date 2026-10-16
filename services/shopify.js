@@ -570,9 +570,22 @@ export async function markCustomerVerified(customerId) {
         // Step 1: Get next sequential number
         verifiedNumber = await getNextVerifiedNumber();
 
-        // Step 2: Write metafield IMMEDIATELY — before anything else — so next caller
-        // in the lock queue sees this number and skips past it.
-        await setVerifiedNumber(customerId, verifiedNumber);
+        // Step 2: Write metafield IMMEDIATELY. The metafield is unique, so if the number is
+        // already taken by a customer we didn't scan (e.g. support removed their tags),
+        // bump and retry instead of failing the verification.
+        for (let attempt = 0; ; attempt++) {
+          try {
+            await setVerifiedNumber(customerId, verifiedNumber);
+            break;
+          } catch (e) {
+            if (attempt < 200 && /already assigned|unique/i.test(e.message)) {
+              console.warn('[Shopify] verified_number', verifiedNumber, 'taken — trying', verifiedNumber + 1);
+              verifiedNumber += 1;
+              continue;
+            }
+            throw e;
+          }
+        }
         console.log('[Shopify] Verified number', verifiedNumber, 'locked in for customer', customerId);
 
         resolve({ verifiedNumber, customerId });
